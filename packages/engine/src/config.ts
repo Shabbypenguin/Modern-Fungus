@@ -68,20 +68,105 @@ export function classicConfig(players: PlayerConfig[], overrides: Partial<GameCo
   };
 }
 
+/** Five-step speed scale used by the modern options. */
+export type Speed = 'veryslow' | 'slow' | 'normal' | 'fast' | 'veryfast';
+export const SPEEDS: readonly { id: Speed; label: string }[] = [
+  { id: 'veryslow', label: 'Very slow' },
+  { id: 'slow', label: 'Slow' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'fast', label: 'Fast' },
+  { id: 'veryfast', label: 'Very fast' },
+];
+
+/** New teeth: everyone gets +1 bite every `base` + [0, jitter) rounds. Normal = the 1994 value. */
+export const TOOTH_RATES: Record<Speed, { base: number; jitter: number }> = {
+  veryslow: { base: 16, jitter: 6 },
+  slow: { base: 12, jitter: 6 },
+  normal: { base: 8, jitter: 6 },
+  fast: { base: 5, jitter: 4 },
+  veryfast: { base: 3, jitter: 3 },
+};
+
+/** Bite growth: big bites arrive at this fraction of a fair share of the board. Normal = 1994. */
+export const BITE_GROWTH: Record<Speed, number> = {
+  veryslow: 1.4,
+  slow: 1.1,
+  normal: FAIR_SHARE_FRACTION,
+  fast: 0.55,
+  veryfast: 0.35,
+};
+
+export interface ModernOptions {
+  /** How often everyone grows a new tooth. */
+  newTeeth?: Speed;
+  /** How soon bites become big (and then monster) bites. */
+  biteGrowth?: Speed;
+}
+
+/**
+ * Game speed presets [ours]: one choice that sets board size, new teeth and
+ * bite growth together. Board size is relative to the smallest board that fits
+ * the player count, so "Normal" with 4 players is the classic 20×20.
+ */
+export type GameSpeed = 'slowest' | 'slow' | 'normal' | 'fast' | 'fastest';
+export const GAME_SPEEDS: readonly { id: GameSpeed; label: string; sizeStepsUp: number; newTeeth: Speed; biteGrowth: Speed }[] = [
+  { id: 'slowest', label: 'Slowest', sizeStepsUp: 2, newTeeth: 'veryslow', biteGrowth: 'veryslow' },
+  { id: 'slow', label: 'Slow', sizeStepsUp: 1, newTeeth: 'slow', biteGrowth: 'slow' },
+  { id: 'normal', label: 'Normal', sizeStepsUp: 0, newTeeth: 'normal', biteGrowth: 'normal' },
+  { id: 'fast', label: 'Fast', sizeStepsUp: 0, newTeeth: 'fast', biteGrowth: 'fast' },
+  { id: 'fastest', label: 'Fastest', sizeStepsUp: 0, newTeeth: 'veryfast', biteGrowth: 'veryfast' },
+];
+
+export interface SpeedSettings {
+  boardSize: number;
+  newTeeth: Speed;
+  biteGrowth: Speed;
+}
+
+/** The board size, new teeth and bite growth a preset means for `players` players. */
+export function gameSpeedSettings(speed: GameSpeed, players: number): SpeedSettings {
+  const preset = GAME_SPEEDS.find((g) => g.id === speed)!;
+  const minIdx = BOARD_SIZES.findIndex((b) => b.size === minModernSize(players));
+  const idx = Math.min(BOARD_SIZES.length - 1, minIdx + preset.sizeStepsUp);
+  return { boardSize: BOARD_SIZES[idx]!.size, newTeeth: preset.newTeeth, biteGrowth: preset.biteGrowth };
+}
+
+/** Which preset (if any) these settings match. */
+export function matchGameSpeed(settings: SpeedSettings, players: number): GameSpeed | null {
+  for (const g of GAME_SPEEDS) {
+    const p = gameSpeedSettings(g.id, players);
+    if (p.boardSize === settings.boardSize && p.newTeeth === settings.newTeeth && p.biteGrowth === settings.biteGrowth) return g.id;
+  }
+  return null;
+}
+
+/** Cells per bite-level step for a modern board. */
+export function modernBiteStep(size: number, players: number, growth: Speed = 'normal'): number {
+  return Math.max(10, Math.round((BITE_GROWTH[growth] * size * size) / players));
+}
+
 /**
  * Modern rules [ours]: 2–16 players spaced evenly on a circle, teeth placed so
  * every player is the same distance from the same number of teeth, and bite
  * levels scaled so "big" means the same share of the board at any size.
  */
-export function modernConfig(players: PlayerConfig[], size: number, overrides: Partial<GameConfig> = {}): GameConfig {
+export function modernConfig(
+  players: PlayerConfig[],
+  size: number,
+  overrides: Partial<GameConfig> = {},
+  options: ModernOptions = {},
+): GameConfig {
   const n = players.length;
+  const teeth = TOOTH_RATES[options.newTeeth ?? 'normal'];
   return {
     ...classicConfig(players),
     rules: 'modern',
     size,
     heads: circleHeads(n, size),
     teeth: circleTeeth(n, size),
-    biteStep: Math.max(10, Math.round((FAIR_SHARE_FRACTION * size * size) / n)),
+    biteStep: modernBiteStep(size, n, options.biteGrowth),
+    toothBase: teeth.base,
+    toothJitter: teeth.jitter,
     stalemateTurns: n * 2,
     ...overrides,
   };

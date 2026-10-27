@@ -124,3 +124,59 @@ describe('performance', () => {
     expect(perTurn).toBeLessThan(20); // ms per CPU turn, including validation and state copy
   });
 });
+
+describe('modern options', () => {
+  it('New teeth speeds are ordered and Normal matches 1994', () => {
+    const order = ['veryslow', 'slow', 'normal', 'fast', 'veryfast'] as const;
+    const avg = order.map((sp) => {
+      const c = modernConfig(players(4), 20, {}, { newTeeth: sp });
+      return c.toothBase + (c.toothJitter - 1) / 2;
+    });
+    for (let i = 1; i < avg.length; i++) expect(avg[i]!).toBeLessThan(avg[i - 1]!);
+    const normal = modernConfig(players(4), 20);
+    expect([normal.toothBase, normal.toothJitter]).toEqual([8, 6]);
+  });
+
+  it('Bite growth speeds are ordered and Normal matches 1994', () => {
+    const order = ['veryslow', 'slow', 'normal', 'fast', 'veryfast'] as const;
+    const steps = order.map((sp) => modernConfig(players(4), 20, {}, { biteGrowth: sp }).biteStep);
+    for (let i = 1; i < steps.length; i++) expect(steps[i]!).toBeLessThan(steps[i - 1]!);
+    expect(steps[2]).toBe(80);
+  });
+
+  it('fast new teeth actually arrive faster in play', () => {
+    const firstToothRound = (sp: 'veryslow' | 'veryfast') => {
+      let s = createGame(modernConfig(players(2), 20, { stalemateTurns: 0 }, { newTeeth: sp }), 5);
+      while (s.players[0]!.bites === 0) {
+        const r = applyAction(s, s.current, { type: 'pass' });
+        if (!r.ok) throw new Error(r.error);
+        s = r.state;
+      }
+      return s.round;
+    };
+    expect(firstToothRound('veryfast')).toBeLessThan(firstToothRound('veryslow'));
+  });
+});
+
+describe('game speed presets', () => {
+  it('Normal with 4 players is the classic feel: 20×20, normal teeth and bites', async () => {
+    const { gameSpeedSettings } = await import('../src/index.js');
+    expect(gameSpeedSettings('normal', 4)).toEqual({ boardSize: 20, newTeeth: 'normal', biteGrowth: 'normal' });
+  });
+  it('presets always fit the player count and round-trip through matchGameSpeed', async () => {
+    const { GAME_SPEEDS, gameSpeedSettings, matchGameSpeed } = await import('../src/index.js');
+    for (let n = 2; n <= 16; n++)
+      for (const g of GAME_SPEEDS) {
+        const set = gameSpeedSettings(g.id, n);
+        expect(set.boardSize).toBeGreaterThanOrEqual(minModernSize(n));
+        expect(matchGameSpeed(set, n)).toBe(g.id);
+      }
+  });
+  it('slower presets never use a smaller board than faster ones', async () => {
+    const { GAME_SPEEDS, gameSpeedSettings } = await import('../src/index.js');
+    for (let n = 2; n <= 16; n++) {
+      const sizes = GAME_SPEEDS.map((g) => gameSpeedSettings(g.id, n).boardSize);
+      for (let i = 1; i < sizes.length; i++) expect(sizes[i]!).toBeLessThanOrEqual(sizes[i - 1]!);
+    }
+  });
+});

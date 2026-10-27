@@ -3,7 +3,7 @@
  * storage can be unavailable (private mode, blocked site data), so every access
  * is guarded and the game works without it.
  */
-import type { PlayerKind } from '@fungus/engine';
+import type { GameSpeed, PlayerKind, Speed } from '@fungus/engine';
 
 export interface RosterEntry {
   name: string;
@@ -27,6 +27,11 @@ export interface Saved {
   timeLimit: number | null;
   sound: boolean;
   uiScale: number;
+  /** Modern only. */
+  newTeeth: Speed;
+  biteGrowth: Speed;
+  /** Modern preset, or 'custom' once board / teeth / growth are set by hand. */
+  gameSpeed: GameSpeed | 'custom';
 }
 
 const KEY = 'fungus.v1';
@@ -52,7 +57,15 @@ const DEFAULTS: Saved = {
   timeLimit: null,
   sound: true,
   uiScale: 1,
+  newTeeth: 'normal',
+  biteGrowth: 'normal',
+  gameSpeed: 'normal',
 };
+
+const GAME_SPEED_IDS = ['slowest', 'slow', 'normal', 'fast', 'fastest', 'custom'];
+
+const SPEED_IDS: Speed[] = ['veryslow', 'slow', 'normal', 'fast', 'veryfast'];
+const speed = (v: unknown): Speed => (SPEED_IDS.includes(v as Speed) ? (v as Speed) : 'normal');
 
 const isSeat = (s: unknown): s is Seat =>
   !!s && typeof (s as Seat).name === 'string' && ['human', 'cpu-classic', 'cpu', 'none'].includes((s as Seat).kind);
@@ -72,6 +85,9 @@ export function load(): Saved {
       timeLimit: typeof v.timeLimit === 'number' ? v.timeLimit : null,
       sound: v.sound !== false,
       uiScale: typeof v.uiScale === 'number' ? v.uiScale : 1,
+      newTeeth: speed(v.newTeeth),
+      biteGrowth: speed(v.biteGrowth),
+      gameSpeed: GAME_SPEED_IDS.includes(v.gameSpeed as string) ? (v.gameSpeed as Saved['gameSpeed']) : 'normal',
     };
   } catch {
     return structuredClone(DEFAULTS);

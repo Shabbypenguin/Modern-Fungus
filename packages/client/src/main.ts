@@ -1,6 +1,18 @@
 import './style.css';
-import { BOARD_SIZES, MAX_PLAYERS, classicConfig, minModernSize, modernConfig } from '@fungus/engine';
-import type { GameConfig, PlayerConfig } from '@fungus/engine';
+import {
+  BOARD_SIZES,
+  GAME_SPEEDS,
+  MAX_PLAYERS,
+  SPEEDS,
+  TOOTH_RATES,
+  classicConfig,
+  gameSpeedSettings,
+  matchGameSpeed,
+  minModernSize,
+  modernBiteStep,
+  modernConfig,
+} from '@fungus/engine';
+import type { GameConfig, GameSpeed, PlayerConfig, Speed } from '@fungus/engine';
 import { controlsTables } from './controls';
 import { h, titlebar } from './dom';
 import { GameScreen } from './game';
@@ -46,16 +58,38 @@ function segmented<T extends string | number>(
   );
 }
 
+/** Keeps the disclosure open and the player list scrolled across re-renders. */
+const ui = { customOpen: false, playersScroll: 0 };
+
 function showSetup(): void {
   current?.destroy();
   current = null;
+  // Remember focus so keyboard users keep their place when the form re-renders.
+  const focused = document.activeElement as HTMLInputElement | null;
+  const focusKey = focused?.name ? `${focused.name}=${focused.value}` : focused?.dataset.key ?? null;
+
   const st: Saved = load();
   setSound(st.sound);
   const error = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
   const persist = () => save({ ...load(), ...st });
   const rerender = () => {
+    ui.playersScroll = document.querySelector('.players-scroll')?.scrollTop ?? 0;
     persist();
     showSetup();
+  };
+  const modern = st.rules === 'modern';
+  const nModern = st.modernSeats.length;
+
+  // ---- keep modern settings consistent with the chosen preset and player count
+  if (modern) {
+    if (st.gameSpeed !== 'custom') Object.assign(st, gameSpeedSettings(st.gameSpeed, nModern));
+    const min = minModernSize(nModern);
+    if (st.boardSize < min) st.boardSize = min;
+  }
+  if (!BOARD_SIZES.some((b) => b.size === st.boardSize)) st.boardSize = 20;
+  /** After a manual change, show which preset (if any) the settings now match. */
+  const syncPreset = () => {
+    st.gameSpeed = matchGameSpeed(st, nModern) ?? 'custom';
   };
 
   const datalist = h('datalist', { id: 'roster-names' }, ...load().roster.map((r) => h('option', { value: r.name })));
@@ -65,6 +99,7 @@ function showSetup(): void {
       value: seat.name,
       maxlength: 16,
       list: 'roster-names',
+      'data-key': `name${i}`,
       'aria-label': `${PLAYER_STYLES[i]!.name} player name`,
       oninput: (e: Event) => {
         seat.name = (e.target as HTMLInputElement).value;
@@ -72,7 +107,7 @@ function showSetup(): void {
       },
     });
 
-  // ---- rules & board
+  // ---- rules
   const rules = segmented<'classic' | 'modern'>(
     'rules',
     'Rules',
@@ -89,38 +124,113 @@ function showSetup(): void {
   const rulesNote = h(
     'p',
     { class: 'muted note' },
-    st.rules === 'classic'
-      ? 'The 1994 game: up to 4 players, teeth in the corners.'
-      : 'Up to 16 players spaced evenly in a ring, with teeth placed fairly between neighbours and in the centre.',
+    modern
+      ? 'Up to 16 players in a fair ring. Pick a game speed, or set everything yourself.'
+      : 'The 1994 game: up to 4 players, teeth in the corners.',
   );
 
-  const activeModern = st.modernSeats.length;
-  const minSize = st.rules === 'modern' ? minModernSize(activeModern) : 0;
-  if (st.boardSize < minSize) st.boardSize = minSize;
-  if (!BOARD_SIZES.some((b) => b.size === st.boardSize)) st.boardSize = 20;
-  const board = segmented<number>(
-    'board',
-    'Board size',
-    BOARD_SIZES.map((b) => ({
-      value: b.size,
-      text: `${b.label} ${b.size}`,
-      disabled: b.size < minSize,
-      title: b.size < minSize ? `Too small for ${activeModern} players` : `${b.size} × ${b.size} cells`,
-    })),
-    st.boardSize,
-    (v) => {
-      st.boardSize = v;
-      persist();
-    },
-  );
-  const boardNote =
-    st.rules === 'modern' && minSize > 20
-      ? h('p', { class: 'muted note' }, `${activeModern} players need at least the ${BOARD_SIZES.find((b) => b.size === minSize)!.label} board.`)
-      : null;
+  // ---- game speed (modern)
+  const speed = modern
+    ? h(
+        'div',
+        { class: 'field' },
+        h('h2', {}, 'Game speed'),
+        segmented<GameSpeed>(
+          'gameSpeed',
+          'Game speed',
+          GAME_SPEEDS.map((g) => ({ value: g.id, text: g.label })),
+          st.gameSpeed === 'custom' ? ('none' as GameSpeed) : st.gameSpeed,
+          (v) => {
+            st.gameSpeed = v;
+            rerender();
+          },
+        ),
+        h(
+          'p',
+          { class: 'muted note' },
+          st.gameSpeed === 'custom'
+            ? 'Custom — your own board and bite settings.'
+            : 'Faster games use a smaller board, more teeth and bites that grow sooner.',
+        ),
+      )
+    : null;
 
-  // ---- seats
+  // ---- board
+  const minSize = modern ? minModernSize(nModern) : 0;
+  const board = h(
+    'div',
+    { class: 'field' },
+    h('h2', {}, 'Board'),
+    segmented<number>(
+      'board',
+      'Board size',
+      BOARD_SIZES.map((b) => ({
+        value: b.size,
+        text: `${b.label} ${b.size}`,
+        disabled: b.size < minSize,
+        title: b.size < minSize ? `Too small for ${nModern} players` : `${b.size} × ${b.size} cells`,
+      })),
+      st.boardSize,
+      (v) => {
+        st.boardSize = v;
+        if (modern) syncPreset();
+        rerender();
+      },
+    ),
+    modern && minSize > 20
+      ? h('p', { class: 'muted note' }, `${nModern} players need at least the ${BOARD_SIZES.find((b) => b.size === minSize)!.label} board.`)
+      : null,
+  );
+
+  // ---- custom settings (modern): new teeth + bite growth, independent of each other
+  let custom: HTMLElement | null = null;
+  if (modern) {
+    const t = TOOTH_RATES[st.newTeeth];
+    const step = modernBiteStep(st.boardSize, nModern, st.biteGrowth);
+    const label = (sp: Speed) => SPEEDS.find((x) => x.id === sp)!.label;
+    const picker = (name: string, title: string, value: Speed, set: (v: Speed) => void) =>
+      segmented<Speed>(name, title, SPEEDS.map((sp) => ({ value: sp.id, text: sp.label })), value, (v) => {
+        set(v);
+        syncPreset();
+        rerender();
+      });
+    custom = h(
+      'details',
+      {
+        class: 'custom',
+        open: ui.customOpen || st.gameSpeed === 'custom',
+        ontoggle: (e: Event) => (ui.customOpen = (e.target as HTMLDetailsElement).open),
+      },
+      h(
+        'summary',
+        {},
+        h('span', { class: 'summary-title' }, 'Custom settings'),
+        h('span', { class: 'muted' }, ` New teeth ${label(st.newTeeth).toLowerCase()}, bite growth ${label(st.biteGrowth).toLowerCase()}`),
+      ),
+      h(
+        'div',
+        { class: 'custom-body' },
+        h(
+          'div',
+          { class: 'field' },
+          h('h3', {}, 'New teeth'),
+          picker('newTeeth', 'How often new teeth grow', st.newTeeth, (v) => (st.newTeeth = v)),
+          h('p', { class: 'muted note' }, `Everyone gets a free bite every ${t.base}–${t.base + t.jitter - 1} rounds.`),
+        ),
+        h(
+          'div',
+          { class: 'field' },
+          h('h3', {}, 'Bite growth'),
+          picker('biteGrowth', 'How soon bites get bigger', st.biteGrowth, (v) => (st.biteGrowth = v)),
+          h('p', { class: 'muted note' }, `Big bites (2 long) at ${step} cells, monster bites (3 long) at ${step * 2}.`),
+        ),
+      ),
+    );
+  }
+
+  // ---- players
   let seatsEl: HTMLElement;
-  if (st.rules === 'classic') {
+  if (!modern) {
     seatsEl = h(
       'div',
       { class: 'seats' },
@@ -170,9 +280,10 @@ function showSetup(): void {
             {
               type: 'button',
               class: 'remove',
+              'data-key': `remove${i}`,
               'aria-label': `Remove ${seat.name || PLAYER_STYLES[i]!.name}`,
               title: 'Remove this player',
-              disabled: activeModern <= 2,
+              disabled: nModern <= 2,
               onclick: () => {
                 st.modernSeats.splice(i, 1);
                 rerender();
@@ -187,16 +298,24 @@ function showSetup(): void {
         {
           type: 'button',
           class: 'add-player',
-          disabled: activeModern >= MAX_PLAYERS,
+          'data-key': 'add',
+          disabled: nModern >= MAX_PLAYERS,
           onclick: () => {
             st.modernSeats.push({ name: `CPU ${st.modernSeats.length}`, kind: 'cpu-classic' });
             rerender();
           },
         },
-        activeModern >= MAX_PLAYERS ? `${MAX_PLAYERS} players is the most` : 'Add player',
+        nModern >= MAX_PLAYERS ? `${MAX_PLAYERS} players is the most` : 'Add player',
       ),
     );
   }
+  const players = h(
+    'div',
+    { class: 'field players-field' },
+    h('h2', {}, `Players${modern ? ` (${nModern})` : ''}`),
+    h('div', { class: 'players-scroll' }, seatsEl),
+    datalist,
+  );
 
   // ---- options
   const timeOn = h('input', { type: 'checkbox', checked: st.timeLimit !== null, id: 'time-on' });
@@ -211,14 +330,20 @@ function showSetup(): void {
         setUiScale(st.uiScale);
       },
     },
-    ...UI_SCALES.map((s) => h('option', { value: s.value, selected: s.value === st.uiScale }, s.label)),
+    ...UI_SCALES.map((sc) => h('option', { value: sc.value, selected: sc.value === st.uiScale }, sc.label)),
+  );
+  const options = h(
+    'div',
+    { class: 'options' },
+    h('div', { class: 'opt' }, h('label', { for: 'time-on' }, timeOn, ' Turn time limit'), timeSecs, h('span', { class: 'muted' }, 'seconds')),
+    h('div', { class: 'opt' }, h('label', { for: 'sound-on' }, soundOn, ' Sound')),
+    h('div', { class: 'opt' }, h('label', { for: 'ui-size' }, 'Interface size'), uiSize),
   );
 
   const start = () => {
-    const seats =
-      st.rules === 'classic'
-        ? st.seats.flatMap((s, i) => (s.kind === 'none' ? [] : [{ ...s, i }]))
-        : st.modernSeats.map((s, i) => ({ ...s, kind: s.kind === 'none' ? ('cpu-classic' as const) : s.kind, i }));
+    const seats = !modern
+      ? st.seats.flatMap((s, i) => (s.kind === 'none' ? [] : [{ ...s, i }]))
+      : st.modernSeats.map((s, i) => ({ ...s, kind: s.kind === 'none' ? ('cpu-classic' as const) : s.kind, i }));
     if (seats.length < 2) return void (error.textContent = 'Fill at least two seats to start.');
     const names = seats.map((s) => s.name.trim() || PLAYER_STYLES[s.i]!.name);
     if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) return void (error.textContent = 'Each player needs a different name.');
@@ -228,11 +353,10 @@ function showSetup(): void {
     st.sound = soundOn.checked;
     persist();
     setSound(st.sound);
-    const players: PlayerConfig[] = seats.map((s, k) => ({ name: names[k]!, kind: s.kind as PlayerConfig['kind'] }));
-    const config: GameConfig =
-      st.rules === 'classic'
-        ? classicConfig(players, { size: st.boardSize, turnTimeLimit: st.timeLimit })
-        : modernConfig(players, st.boardSize, { turnTimeLimit: st.timeLimit });
+    const ps: PlayerConfig[] = seats.map((s, k) => ({ name: names[k]!, kind: s.kind as PlayerConfig['kind'] }));
+    const config: GameConfig = !modern
+      ? classicConfig(ps, { size: st.boardSize, turnTimeLimit: st.timeLimit })
+      : modernConfig(ps, st.boardSize, { turnTimeLimit: st.timeLimit }, { newTeeth: st.newTeeth, biteGrowth: st.biteGrowth });
     showGame(config, seats.map((s) => s.i));
   };
 
@@ -272,32 +396,36 @@ function showSetup(): void {
       h(
         'form',
         { class: 'setup', onsubmit: (e: Event) => (e.preventDefault(), start()) },
-        h('h1', { class: 'logo' }, 'Fungus'),
-        best,
-        h('div', { class: 'field' }, h('h2', {}, 'Rules'), rules, rulesNote),
-        h('div', { class: 'field' }, h('h2', {}, 'Board'), board, boardNote),
-        h('div', { class: 'field' }, h('h2', {}, `Players${st.rules === 'modern' ? ` (${activeModern})` : ''}`), seatsEl, datalist),
+        h('div', { class: 'setup-left' }, h('h1', { class: 'logo' }, 'Fungus'), best, options, h('p', { class: 'credit' }, 'A remake of Fungus 2.0 © 1992, 1994 Ryan Koopmans.')),
         h(
           'div',
-          { class: 'options' },
-          h('label', { for: 'time-on' }, timeOn, ' Turn time limit '),
-          timeSecs,
-          h('span', { class: 'muted' }, ' seconds'),
-          h('label', { for: 'sound-on', class: 'sound' }, soundOn, ' Sound'),
-          h('label', { for: 'ui-size' }, 'Interface size '),
-          uiSize,
+          { class: 'setup-right' },
+          h('div', { class: 'field' }, h('h2', {}, 'Rules'), rules, rulesNote),
+          speed,
+          board,
+          custom,
+          players,
         ),
-        error,
         h(
           'div',
           { class: 'setup-actions' },
-          h('button', { type: 'button', onclick: showHelp }, 'How to play'),
+          error,
+          h('button', { type: 'button', 'data-key': 'help', onclick: showHelp }, 'How to play'),
           h('button', { type: 'submit', class: 'default' }, 'Begin'),
         ),
-        h('p', { class: 'credit' }, 'A remake of Fungus 2.0 © 1992, 1994 Ryan Koopmans.'),
       ),
     ),
   );
+
+  const scroller = document.querySelector('.players-scroll');
+  if (scroller) scroller.scrollTop = ui.playersScroll;
+  if (focusKey) {
+    const [name, value] = focusKey.split('=');
+    const el = value !== undefined
+      ? document.querySelector<HTMLElement>(`input[name="${name}"][value="${value}"]`)
+      : document.querySelector<HTMLElement>(`[data-key="${focusKey}"]`);
+    el?.focus({ preventScroll: true });
+  }
 }
 
 function showGame(config: GameConfig, seats: number[]): void {
