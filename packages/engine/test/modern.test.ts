@@ -159,42 +159,17 @@ describe('modern options', () => {
 });
 
 describe('game speed presets', () => {
-  it('Normal with 4 players is the classic feel: 20×20, normal teeth and bites', async () => {
-    const { gameSpeedSettings } = await import('../src/index.js');
-    expect(gameSpeedSettings('normal', 4)).toEqual({ boardSize: 20, newTeeth: 'normal', biteGrowth: 'normal' });
-  });
-  it('presets always fit the player count and round-trip through matchGameSpeed', async () => {
+  it('presets set only New teeth and Bite growth, and round-trip', async () => {
     const { GAME_SPEEDS, gameSpeedSettings, matchGameSpeed } = await import('../src/index.js');
-    for (let n = 2; n <= 16; n++)
-      for (const g of GAME_SPEEDS) {
-        const set = gameSpeedSettings(g.id, n);
-        expect(set.boardSize).toBeGreaterThanOrEqual(minModernSize(n));
-        expect(matchGameSpeed(set, n)).toBe(g.id);
-      }
-  });
-  it('slower presets never use a smaller board than faster ones', async () => {
-    const { GAME_SPEEDS, gameSpeedSettings } = await import('../src/index.js');
-    for (let n = 2; n <= 16; n++) {
-      const sizes = GAME_SPEEDS.map((g) => gameSpeedSettings(g.id, n).boardSize);
-      for (let i = 1; i < sizes.length; i++) expect(sizes[i]!).toBeLessThanOrEqual(sizes[i - 1]!);
+    for (const g of GAME_SPEEDS) {
+      const set = gameSpeedSettings(g.id);
+      expect(Object.keys(set).sort()).toEqual(['biteGrowth', 'newTeeth']);
+      expect(matchGameSpeed(set)).toBe(g.id);
     }
+    expect(gameSpeedSettings('normal')).toEqual({ newTeeth: 'normal', biteGrowth: 'normal' });
   });
-});
-
-describe('comfortable preset boards', () => {
-  it('Normal never starts neighbours closer than the 1994 game', async () => {
-    const { gameSpeedSettings, circleHeads } = await import('../src/index.js');
-    for (let n = 2; n <= 16; n++) {
-      const { boardSize } = gameSpeedSettings('normal', n);
-      const h = circleHeads(n, boardSize);
-      const gap = Math.min(...h.map((p, i) => Math.hypot(p.r - h[(i + 1) % n]!.r, p.c - h[(i + 1) % n]!.c)));
-      if (boardSize < 100) expect(gap).toBeGreaterThanOrEqual(8.5);
-    }
-  });
-  it('6 players get Large on Normal; Fastest may squeeze to Classic', async () => {
-    const { gameSpeedSettings } = await import('../src/index.js');
-    expect(gameSpeedSettings('normal', 6).boardSize).toBe(35);
-    expect(gameSpeedSettings('fastest', 6).boardSize).toBe(20);
-    expect(gameSpeedSettings('normal', 4).boardSize).toBe(20);
+  it('mixed speeds are Custom', async () => {
+    const { matchGameSpeed } = await import('../src/index.js');
+    expect(matchGameSpeed({ newTeeth: 'veryfast', biteGrowth: 'veryslow' })).toBeNull();
   });
 });

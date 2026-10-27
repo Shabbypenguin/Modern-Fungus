@@ -30,7 +30,7 @@ export interface Saved {
   /** Modern only. */
   newTeeth: Speed;
   biteGrowth: Speed;
-  /** Modern preset, or 'custom' once board / teeth / growth are set by hand. */
+  /** Modern preset, or 'custom' once new teeth / bite growth are set by hand. */
   gameSpeed: GameSpeed | 'custom';
 }
 

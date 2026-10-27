@@ -82,16 +82,16 @@ function showSetup(): void {
 
   // ---- keep modern settings consistent with the chosen preset and player count
   if (modern) {
-    if (st.gameSpeed !== 'custom') Object.assign(st, gameSpeedSettings(st.gameSpeed, nModern));
-    // Custom settings that happen to equal a preset show as that preset.
-    else st.gameSpeed = matchGameSpeed(st, nModern) ?? 'custom';
+    // Presets only set the two speeds; the board is always the player's own choice.
+    if (st.gameSpeed !== 'custom') Object.assign(st, gameSpeedSettings(st.gameSpeed));
+    else st.gameSpeed = matchGameSpeed(st) ?? 'custom';
     const min = minModernSize(nModern);
     if (st.boardSize < min) st.boardSize = min;
   }
   if (!BOARD_SIZES.some((b) => b.size === st.boardSize)) st.boardSize = 20;
   /** After a manual change, show which preset (if any) the settings now match. */
   const syncPreset = () => {
-    st.gameSpeed = matchGameSpeed(st, nModern) ?? 'custom';
+    st.gameSpeed = matchGameSpeed(st) ?? 'custom';
   };
 
   const datalist = h('datalist', { id: 'roster-names' }, ...load().roster.map((r) => h('option', { value: r.name })));
@@ -151,8 +151,8 @@ function showSetup(): void {
           'p',
           { class: 'muted note' },
           st.gameSpeed === 'custom'
-            ? 'Custom — your own board and bite settings.'
-            : 'Faster games use a smaller board, more teeth and bites that grow sooner.',
+            ? 'Custom — your own mix of new teeth and bite growth.'
+            : 'Faster games grow new teeth more often and bites get bigger sooner.',
         ),
       )
     : null;
@@ -175,7 +175,6 @@ function showSetup(): void {
       st.boardSize,
       (v) => {
         st.boardSize = v;
-        if (modern) syncPreset();
         rerender();
       },
     ),
