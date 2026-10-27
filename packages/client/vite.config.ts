@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Fungus',
         short_name: 'Fungus',
@@ -17,9 +17,12 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'any',
         icons: [
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml' },
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // Full-bleed versions with the art inside the safe zone, for Android's circle/squircle crops.
+          { src: 'icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

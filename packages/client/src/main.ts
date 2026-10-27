@@ -24,6 +24,7 @@ import { load, save } from './storage';
 import type { Saved, Seat } from './storage';
 import { PLAYER_STYLES, TILE, drawFace, makeTile, remapStyles, restoreStyles } from './textures';
 import { UI_SCALES, initUiScale, setUiScale } from './zoom';
+import logoUrl from './assets/logo.svg';
 
 const app = document.getElementById('app')!;
 let current: GameScreen | null = null;
@@ -406,7 +407,7 @@ function showSetup(): void {
       h(
         'form',
         { class: 'setup', onsubmit: (e: Event) => (e.preventDefault(), start()) },
-        h('div', { class: 'setup-left' }, h('h1', { class: 'logo' }, 'Fungus'), best, options, h('p', { class: 'credit' }, 'A remake of Fungus 2.0 © 1992, 1994 Ryan Koopmans.')),
+        h('div', { class: 'setup-left' }, h('h1', { class: 'logo' }, h('img', { src: logoUrl, alt: 'Fungus', width: 1200, height: 420, draggable: 'false' })), best, options, h('p', { class: 'credit' }, 'A remake of Fungus 2.0 © 1992, 1994 Ryan Koopmans.')),
         h(
           'div',
           { class: 'setup-right' },

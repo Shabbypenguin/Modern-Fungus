@@ -13,7 +13,6 @@
   /* Pixel face only for large display text; a hyper-legible face for reading. */
   --pixel: 'Pixelify Sans', 'Chicago', 'Geneva', system-ui, sans-serif;
   --text: 'Atkinson Hyperlegible', 'Verdana', system-ui, sans-serif;
-  --logo: 'Rubik Wet Paint', 'Pixelify Sans', cursive;
   --zoom: 1;
   --side: 17rem;
   --step--1: 0.875rem;
@@ -301,24 +300,20 @@ input[type='checkbox'] {
   }
 }
 
-/* The one loud thing: a dripping, tie-dyed logo. */
+/* The one loud thing: the toadstool logo (an SVG, so it's sharp at any size). */
 .logo {
-  margin: 0.25rem 0 0;
-  font-family: var(--logo);
-  font-weight: 400;
-  font-size: var(--step-5);
-  line-height: 1;
+  margin: 0;
+  line-height: 0;
   text-align: center;
-  background:
-    radial-gradient(circle at 14% 40%, #d8261c 0 18%, transparent 30%),
-    radial-gradient(circle at 38% 70%, #f2cf1d 0 16%, transparent 28%),
-    radial-gradient(circle at 62% 30%, #239650 0 18%, transparent 30%),
-    radial-gradient(circle at 86% 65%, #2c34c4 0 18%, transparent 30%),
-    linear-gradient(90deg, #d8261c, #f2cf1d, #239650, #2c34c4);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-stroke: 1.5px var(--ink);
+}
+
+.logo img {
+  display: block;
+  width: 100%;
+  max-width: 30rem;
+  height: auto;
+  margin: -0.6rem auto -1rem; /* the artwork has breathing room built in */
+  user-select: none;
 }
 
 .best h2 {
