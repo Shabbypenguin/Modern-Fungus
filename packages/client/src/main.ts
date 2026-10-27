@@ -200,7 +200,7 @@ function showSetup(): void {
       'details',
       {
         class: 'custom',
-        open: ui.customOpen || st.gameSpeed === 'custom',
+        open: ui.customOpen, // only the player opens or closes it
         ontoggle: (e: Event) => (ui.customOpen = (e.target as HTMLDetailsElement).open),
       },
       h(
