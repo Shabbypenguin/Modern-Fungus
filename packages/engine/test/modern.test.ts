@@ -180,3 +180,21 @@ describe('game speed presets', () => {
     }
   });
 });
+
+describe('comfortable preset boards', () => {
+  it('Normal never starts neighbours closer than the 1994 game', async () => {
+    const { gameSpeedSettings, circleHeads } = await import('../src/index.js');
+    for (let n = 2; n <= 16; n++) {
+      const { boardSize } = gameSpeedSettings('normal', n);
+      const h = circleHeads(n, boardSize);
+      const gap = Math.min(...h.map((p, i) => Math.hypot(p.r - h[(i + 1) % n]!.r, p.c - h[(i + 1) % n]!.c)));
+      if (boardSize < 100) expect(gap).toBeGreaterThanOrEqual(8.5);
+    }
+  });
+  it('6 players get Large on Normal; Fastest may squeeze to Classic', async () => {
+    const { gameSpeedSettings } = await import('../src/index.js');
+    expect(gameSpeedSettings('normal', 6).boardSize).toBe(35);
+    expect(gameSpeedSettings('fastest', 6).boardSize).toBe(20);
+    expect(gameSpeedSettings('normal', 4).boardSize).toBe(20);
+  });
+});

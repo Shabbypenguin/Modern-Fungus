@@ -107,14 +107,14 @@ These two are independent, so more teeth never force bigger bites:
 | Fast | 5–8 rounds | 55% |
 | Very fast | 3–5 rounds | 35% |
 
-**Game speed presets** set board size, new teeth and bite growth together. The board is relative to the smallest board that fits the player count:
+**Game speed presets** set board size, new teeth and bite growth together. The *comfortable* board is the smallest one where neighbours start at least 9 cells apart, the same as the 1994 4-player game:
 
 | Preset | Board | New teeth | Bite growth |
 |---|---|---|---|
-| Slowest | smallest + 2 sizes | Very slow | Very slow |
-| Slow | smallest + 1 size | Slow | Slow |
-| Normal | smallest | Normal | Normal |
-| Fast | smallest | Fast | Fast |
-| Fastest | smallest | Very fast | Very fast |
+| Slowest | comfortable + 2 sizes | Very slow | Very slow |
+| Slow | comfortable + 1 size | Slow | Slow |
+| Normal | comfortable | Normal | Normal |
+| Fast | comfortable | Fast | Fast |
+| Fastest | smallest legal board | Very fast | Very fast |
 
 Changing any of the three by hand makes the setup **Custom**.

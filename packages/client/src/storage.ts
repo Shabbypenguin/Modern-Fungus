@@ -87,7 +87,13 @@ export function load(): Saved {
       uiScale: typeof v.uiScale === 'number' ? v.uiScale : 1,
       newTeeth: speed(v.newTeeth),
       biteGrowth: speed(v.biteGrowth),
-      gameSpeed: GAME_SPEED_IDS.includes(v.gameSpeed as string) ? (v.gameSpeed as Saved['gameSpeed']) : 'normal',
+      // A save from before presets existed keeps its own board/teeth/growth:
+      // treat it as Custom (setup re-detects a matching preset) instead of overwriting it.
+      gameSpeed: GAME_SPEED_IDS.includes(v.gameSpeed as string)
+        ? (v.gameSpeed as Saved['gameSpeed'])
+        : typeof v.boardSize === 'number'
+          ? 'custom'
+          : 'normal',
     };
   } catch {
     return structuredClone(DEFAULTS);

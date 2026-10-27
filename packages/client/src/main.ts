@@ -83,6 +83,8 @@ function showSetup(): void {
   // ---- keep modern settings consistent with the chosen preset and player count
   if (modern) {
     if (st.gameSpeed !== 'custom') Object.assign(st, gameSpeedSettings(st.gameSpeed, nModern));
+    // Custom settings that happen to equal a preset show as that preset.
+    else st.gameSpeed = matchGameSpeed(st, nModern) ?? 'custom';
     const min = minModernSize(nModern);
     if (st.boardSize < min) st.boardSize = min;
   }

@@ -105,17 +105,40 @@ export interface ModernOptions {
 
 /**
  * Game speed presets [ours]: one choice that sets board size, new teeth and
- * bite growth together. Board size is relative to the smallest board that fits
- * the player count, so "Normal" with 4 players is the classic 20×20.
+ * bite growth together. Board size is relative to the *comfortable* board for
+ * the player count (neighbours at least as far apart as the original 4-player
+ * game), so "Normal" with 4 players is the classic 20×20. Only Fastest squeezes
+ * down to the smallest legal board.
  */
 export type GameSpeed = 'slowest' | 'slow' | 'normal' | 'fast' | 'fastest';
-export const GAME_SPEEDS: readonly { id: GameSpeed; label: string; sizeStepsUp: number; newTeeth: Speed; biteGrowth: Speed }[] = [
-  { id: 'slowest', label: 'Slowest', sizeStepsUp: 2, newTeeth: 'veryslow', biteGrowth: 'veryslow' },
-  { id: 'slow', label: 'Slow', sizeStepsUp: 1, newTeeth: 'slow', biteGrowth: 'slow' },
-  { id: 'normal', label: 'Normal', sizeStepsUp: 0, newTeeth: 'normal', biteGrowth: 'normal' },
-  { id: 'fast', label: 'Fast', sizeStepsUp: 0, newTeeth: 'fast', biteGrowth: 'fast' },
-  { id: 'fastest', label: 'Fastest', sizeStepsUp: 0, newTeeth: 'veryfast', biteGrowth: 'veryfast' },
+export const GAME_SPEEDS: readonly {
+  id: GameSpeed;
+  label: string;
+  /** Board sizes above the comfortable board; 'min' = smallest legal board. */
+  board: number | 'min';
+  newTeeth: Speed;
+  biteGrowth: Speed;
+}[] = [
+  { id: 'slowest', label: 'Slowest', board: 2, newTeeth: 'veryslow', biteGrowth: 'veryslow' },
+  { id: 'slow', label: 'Slow', board: 1, newTeeth: 'slow', biteGrowth: 'slow' },
+  { id: 'normal', label: 'Normal', board: 0, newTeeth: 'normal', biteGrowth: 'normal' },
+  { id: 'fast', label: 'Fast', board: 0, newTeeth: 'fast', biteGrowth: 'fast' },
+  { id: 'fastest', label: 'Fastest', board: 'min', newTeeth: 'veryfast', biteGrowth: 'veryfast' },
 ];
+
+/** Neighbour spacing of the original 4-player game (cells) — what "comfortable" means. */
+const COMFORT_SPACING = 9;
+
+function spacing(n: number, size: number): number {
+  const R = (size - 1) * RING;
+  return n === 2 ? 2 * R : 2 * R * Math.sin(Math.PI / n);
+}
+
+/** Smallest offered board where `n` players start as far apart as in the 1994 game. */
+export function comfortableModernSize(n: number): number {
+  for (const b of BOARD_SIZES) if (spacing(n, b.size) >= COMFORT_SPACING - 0.05) return b.size;
+  return BOARD_SIZES[BOARD_SIZES.length - 1]!.size;
+}
 
 export interface SpeedSettings {
   boardSize: number;
@@ -126,9 +149,13 @@ export interface SpeedSettings {
 /** The board size, new teeth and bite growth a preset means for `players` players. */
 export function gameSpeedSettings(speed: GameSpeed, players: number): SpeedSettings {
   const preset = GAME_SPEEDS.find((g) => g.id === speed)!;
-  const minIdx = BOARD_SIZES.findIndex((b) => b.size === minModernSize(players));
-  const idx = Math.min(BOARD_SIZES.length - 1, minIdx + preset.sizeStepsUp);
-  return { boardSize: BOARD_SIZES[idx]!.size, newTeeth: preset.newTeeth, biteGrowth: preset.biteGrowth };
+  let size: number;
+  if (preset.board === 'min') size = minModernSize(players);
+  else {
+    const base = BOARD_SIZES.findIndex((b) => b.size === comfortableModernSize(players));
+    size = BOARD_SIZES[Math.min(BOARD_SIZES.length - 1, base + preset.board)]!.size;
+  }
+  return { boardSize: size, newTeeth: preset.newTeeth, biteGrowth: preset.biteGrowth };
 }
 
 /** Which preset (if any) these settings match. */
