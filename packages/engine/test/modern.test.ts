@@ -40,7 +40,14 @@ describe('modern layout', () => {
         }
         // Teeth: none on a head, and every player sees the same distances to them.
         const teeth = cfg.teeth!;
-        for (const t of teeth) expect(heads.some((h) => h.r === t.r && h.c === t.c)).toBe(false);
+        for (const t of teeth) {
+          expect(heads.some((h) => h.r === t.r && h.c === t.c)).toBe(false);
+          expect(t.r >= 0 && t.c >= 0 && t.r < size && t.c < size).toBe(true);
+        }
+        // Between-neighbour teeth sit outfield: further from the centre than the spawn ring.
+        const outer = teeth.filter((t) => dist(t, { r: mid, c: mid }) > 2);
+        expect(outer.length).toBe(n);
+        for (const t of outer) expect(dist(t, { r: mid, c: mid })).toBeGreaterThan(Math.max(...radii) + 0.5);
         const profile = (h: Pos) => teeth.map((t) => dist(h, t)).sort((a, b) => a - b);
         const ref = profile(heads[0]!);
         for (const h of heads) profile(h).forEach((d, i) => expect(Math.abs(d - ref[i]!)).toBeLessThanOrEqual(1.3));

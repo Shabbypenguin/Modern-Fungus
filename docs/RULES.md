@@ -90,7 +90,7 @@ Classic 20, Large 35, XL 50, Mega 75, Massive 100. **[ours]**
 
 - **Players:** 2–16, spaced evenly on a circle at 36% of the board width from the centre. So 2 face each other, 3 make a triangle, 4 a square (in the classic seat order), 6 a hexagon.
 - **Minimum board:** a size is offered only if neighbouring spawns are at least 5 cells apart. Up to 8 players fit Classic 20, up to 15 fit Large 35, and 16 need XL 50.
-- **Fair teeth:** one tooth on the circle exactly halfway between each pair of neighbours, plus the centre. The centre is one cell on odd boards and the middle 2×2 on even boards. Every player is the same distance from the same set of teeth.
+- **Fair teeth:** one tooth exactly halfway between each pair of neighbours, out past the spawn ring toward the edge (45% of the board width from the centre, versus 36% for spawns), plus the centre. The centre is one cell on odd boards and the middle 2×2 on even boards. Every player is the same distance from the same set of teeth.
 - **Grid fairness:** snapping a regular polygon to a grid can't be perfect for most player counts. The layout searches small radius and rotation nudges and keeps the fairest one. Across every offered player count and board size, no player's distances to rivals or teeth differ from anyone else's by more than 1.3 cells, and 2, 4 and 8 players are often exact.
 - **Bite levels scale with the board:** `biteStep = 0.8 × cells ÷ players`, which is "80% of a fair share of the board". That reproduces the original's 80 at 20×20 with 4 players, and gives 500 at 100×100 with 16.
 - **Everything else** (pieces, capture, bites, the free tooth every 8–13 rounds) is the classic rule set.

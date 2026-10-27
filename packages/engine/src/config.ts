@@ -89,6 +89,8 @@ export function modernConfig(players: PlayerConfig[], size: number, overrides: P
 
 /** Spawn circle radius as a fraction of the board, leaving room to grow outward. */
 const RING = 0.36;
+/** Teeth sit further out ("outfield"), still exactly between neighbours. */
+const TOOTH_RING = 0.45;
 /** Minimum distance (cells) between neighbouring spawns for a size to be offered. */
 const MIN_SPACING = 5;
 
@@ -156,7 +158,8 @@ function fairLayout(n: number, size: number): Layout {
       if (new Set(heads.map((h) => `${h.r},${h.c}`)).size !== n) continue;
       // Never trade spacing for symmetry: keep neighbours at least MIN_SPACING − ½ apart.
       if (n > 2 && heads.some((h, i) => d(h, heads[(i + 1) % n]!) < MIN_SPACING - 0.5)) continue;
-      const teeth = dedupe([...ringAt(n, size, R0 + dr, rot, Math.PI / n), ...centreTeeth(size)]).filter(
+      const Rt = (size - 1) * TOOTH_RING + dr;
+      const teeth = dedupe([...ringAt(n, size, Rt, rot, Math.PI / n), ...centreTeeth(size)]).filter(
         (t) => !heads.some((h) => h.r === t.r && h.c === t.c),
       );
       // Prefer fairness, then staying close to the nominal circle and orientation.
@@ -187,9 +190,9 @@ export function circleHeads(n: number, size: number): Pos[] {
 }
 
 /**
- * One tooth on the circle exactly between each pair of neighbours, plus the
- * centre (one cell on odd boards, the middle 2×2 on even boards) — equally far
- * from everyone.
+ * One tooth exactly between each pair of neighbours — out past the spawn ring,
+ * toward the edge of the board — plus the centre (one cell on odd boards, the
+ * middle 2×2 on even boards). Every player is equally far from them.
  */
 export function circleTeeth(n: number, size: number): Pos[] {
   return fairLayout(n, size).teeth.map((p) => ({ ...p }));
