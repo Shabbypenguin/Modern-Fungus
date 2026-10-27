@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@fungus/engine": "0.1.0"
+    "@fungus/engine": "0.1.0",
+    "@fungus/protocol": "0.1.0"
   },
   "devDependencies": {
     "vite-plugin-pwa": "2.0.0"

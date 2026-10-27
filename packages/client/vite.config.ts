@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  server: { host: true, port: 5173 },
+  // In development the game server runs separately (npm run dev starts both); pass its socket through.
+  server: { host: true, port: 5173, proxy: { '/ws': { target: 'ws://localhost:8787', ws: true } } },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -23,6 +24,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        navigateFallbackDenylist: [/^\/ws/, /^\/healthz/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',

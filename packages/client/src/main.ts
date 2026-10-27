@@ -16,14 +16,18 @@ import type { GameConfig, GameSpeed, PlayerConfig, Speed } from '@fungus/engine'
 import { controlsTables } from './controls';
 import { h, titlebar } from './dom';
 import { GameScreen } from './game';
+import { Online } from './online';
+import { cleanCode } from '@fungus/protocol';
+import type { RoomSettings, SeatSpec } from '@fungus/protocol';
 import { setSound } from './sound';
 import { load, save } from './storage';
 import type { Saved, Seat } from './storage';
-import { PLAYER_STYLES, TILE, drawFace, makeTile } from './textures';
+import { PLAYER_STYLES, TILE, drawFace, makeTile, remapStyles, restoreStyles } from './textures';
 import { UI_SCALES, initUiScale, setUiScale } from './zoom';
 
 const app = document.getElementById('app')!;
 let current: GameScreen | null = null;
+let online: Online | null = null;
 
 const KIND_LABEL: Record<Seat['kind'], string> = { human: 'Human', 'cpu-classic': 'CPU', cpu: 'CPU', none: 'None' };
 
@@ -412,6 +416,7 @@ function showSetup(): void {
           { class: 'setup-actions' },
           error,
           h('button', { type: 'button', 'data-key': 'help', onclick: showHelp }, 'How to play'),
+          h('button', { type: 'button', 'data-key': 'online', onclick: () => (persist(), showOnline()) }, 'Play online'),
           h('button', { type: 'submit', class: 'default' }, 'Begin'),
         ),
       ),
@@ -441,13 +446,43 @@ function showGame(config: GameConfig, seats: number[]): void {
   app.replaceChildren(current.root);
 }
 
-// Engine indices are compact (0..n-1) but classic seats keep their colour, so swap the style table for the game.
-const ORIGINAL_STYLES = [...PLAYER_STYLES];
-function remapStyles(seats: number[]): void {
-  seats.forEach((seat, i) => (PLAYER_STYLES[i] = ORIGINAL_STYLES[seat]!));
+// ---------------------------------------------------------------- online
+
+/**
+ * The room the setup screen describes. Every seat starts open for people to join;
+ * any still empty at the start are played by CPUs (the host can also reserve CPU seats).
+ */
+function hostSettings(): Omit<RoomSettings, 'turnTimeLimit' | 'public'> {
+  const st = load();
+  let seats: SeatSpec[] = st.rules === 'classic' ? st.seats.map((x) => (x.kind === 'none' ? 'closed' : 'open')) : st.modernSeats.map(() => 'open');
+  // A game needs two seats.
+  if (seats.filter((x) => x !== 'closed').length < 2) seats = seats.map((x, i) => (i < 2 ? 'open' : x));
+  const boardSize = st.rules === 'modern' ? Math.max(st.boardSize, minModernSize(seats.length)) : st.boardSize;
+  return { rules: st.rules, boardSize, newTeeth: st.newTeeth, biteGrowth: st.biteGrowth, seats };
 }
-function restoreStyles(): void {
-  ORIGINAL_STYLES.forEach((s, i) => (PLAYER_STYLES[i] = s));
+
+function hostSummary(): string {
+  const r = hostSettings();
+  const n = r.seats.filter((x) => x !== 'closed').length;
+  const board = BOARD_SIZES.find((b) => b.size === r.boardSize)!;
+  return (
+    `From your setup: ${r.rules === 'classic' ? 'Classic' : 'Modern'} rules, ${board.label} ${r.boardSize} board, ${n} seats. ` +
+    `CPUs fill any seats nobody takes.`
+  );
+}
+
+function showOnline(joinCode?: string): void {
+  current?.destroy();
+  current = null;
+  online = new Online(app, {
+    hostSettings,
+    hostSummary,
+    joinCode,
+    onBack: () => {
+      online = null;
+      showSetup();
+    },
+  });
 }
 
 function showHelp(): void {
@@ -486,4 +521,6 @@ function showHelp(): void {
 }
 
 initUiScale();
-showSetup();
+const invite = cleanCode(new URLSearchParams(location.search).get('room'));
+if (invite) showOnline(invite);
+else showSetup();

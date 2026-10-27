@@ -214,3 +214,14 @@ export function drawTooth(g: CanvasRenderingContext2D, x: number, y: number, siz
   g.stroke();
   g.restore();
 }
+
+// Engine indices are compact (0..n-1) but seats keep their colour, so swap the style table for a game.
+const ORIGINAL_STYLES = [...PLAYER_STYLES];
+/** styleOf[i] = which seat colour engine player i wears. */
+export function remapStyles(styleOf: number[]): void {
+  restoreStyles();
+  styleOf.forEach((seat, i) => (PLAYER_STYLES[i] = ORIGINAL_STYLES[seat]!));
+}
+export function restoreStyles(): void {
+  ORIGINAL_STYLES.forEach((s, i) => (PLAYER_STYLES[i] = s));
+}

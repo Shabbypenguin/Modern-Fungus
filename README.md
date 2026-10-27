@@ -10,11 +10,30 @@ It's a browser PWA with CPU players and online play.
 ## Develop (Windows / any OS)
 ```
 npm install
-npm run dev      # play at http://localhost:5173 (also reachable from phones on your LAN)
-npm test         # rules engine tests
-npm run build    # production PWA in packages/client/dist
+npm run dev      # game server on :8787 + client at http://localhost:5173 (LAN phones too)
+npm test         # engine, protocol and server tests
+npm run build    # client to packages/client/dist, server to packages/server/dist/server.mjs
+npm start        # run the built server (serve the client with STATIC_DIR=packages/client/dist)
 ```
+
+## Online play
+The server is authoritative. Clients send moves, the server checks them and broadcasts every accepted action.
+Each client replays the action with the shared engine and compares a state hash; on any mismatch it asks for a fresh snapshot.
+- Nickname only, no accounts. A per-tab token puts a reloaded or dropped player back in their seat.
+- Room codes and invite links (`?room=CODE`), a public room browser, and Quick play.
+- A player who drops out gets 60 seconds to return, then a CPU plays for them until they come back. Leaving hands the fungus to a CPU for good.
+- Quick emotes only, no chat.
+- Limits: 16 KB messages, per-session rate limit, 12 sockets per IP, 200 rooms, 2000 sessions, same-origin WebSocket check, strict CSP.
+
+## Self-hosting
+The `Dockerfile` runs the tests, builds, and produces a small non-root `node:22-alpine` image with a `/healthz` healthcheck:
+```
+docker build -t fungus . && docker run -p 8787:8787 fungus
+```
+Behind a reverse proxy, forward `/ws` as a WebSocket and set `TRUST_PROXY=1`. See the wiki's Development page for every setting.
 
 ## Layout
 - `packages/engine` holds the rules, the classic CPU, and the tests. It has no DOM and runs in the browser and on the server.
 - `packages/client` is the browser PWA (Vite + Canvas 2D, no framework).
+- `packages/protocol` holds the message types and validation shared by the client and server.
+- `packages/server` is the Node game server (`ws`), which also serves the built client.

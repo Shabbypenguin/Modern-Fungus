@@ -8,13 +8,18 @@ import {
   classicCpuTurn,
   createGame,
   hasAnyMove,
+  legalPlacements,
   shapeCells,
+  stateHash,
 } from '@fungus/engine';
 import type { Action, GameConfig, GameEvent, GameState, Pos } from '@fungus/engine';
+import { EMOTES, EMOTE_LABEL } from '@fungus/protocol';
+import type { Emote, GameSnapshot, ServerMessage } from '@fungus/protocol';
 import { controlsDialog } from './controls';
 import { h, titlebar } from './dom';
 import { BoardRenderer } from './render';
 import type { Overlay } from './render';
+import type { NetClient } from './net';
 import { sfx } from './sound';
 import { recordResult } from './storage';
 import { PLAYER_STYLES, TILE, TILE_CELLS, drawFace, makeTile } from './textures';
@@ -42,9 +47,18 @@ const ERRORS: Record<string, string> = {
 
 const biteWord = (level: number) => (level >= 3 ? 'Monster bites' : level === 2 ? 'Big bites' : 'Bites');
 
+/** Present when the game is played on the server instead of in this tab. */
+export interface OnlineLink {
+  net: NetClient;
+  snapshot: GameSnapshot;
+  /** Game over: go back to the room's lobby. */
+  onBackToRoom: () => void;
+}
+
 export interface GameOptions {
   config: GameConfig;
   onExit: () => void;
+  online?: OnlineLink;
 }
 
 interface Press {
@@ -87,9 +101,26 @@ export class GameScreen {
   private presses = new Map<number, Press>();
   private pinch: { dist: number; mx: number; my: number } | null = null;
   private wheelRotate = 0;
+  // Online state
+  private net: NetClient | null = null;
+  /** Your engine player online, or null when watching. */
+  private you: number | null = null;
+  private seq = 0;
+  private standIns = new Set<number>();
+  /** An action was sent and the server hasn't answered yet. */
+  private waiting = false;
+  private resyncing = false;
+  private emoteRow: HTMLElement | null = null;
 
   constructor(private opts: GameOptions) {
-    this.s = createGame(opts.config, (Math.random() * 2 ** 32) >>> 0);
+    const on = opts.online;
+    if (on) {
+      this.net = on.net;
+      this.s = on.snapshot.state;
+      this.you = on.snapshot.you;
+      this.seq = on.snapshot.seq;
+      this.standIns = new Set(on.snapshot.standIns);
+    } else this.s = createGame(opts.config, (Math.random() * 2 ** 32) >>> 0);
 
     this.canvas = h('canvas', { class: 'board', 'aria-label': 'Game board', tabindex: 0 });
     const boardWrap = h('div', { class: 'board-wrap' }, this.canvas);
@@ -100,7 +131,14 @@ export class GameScreen {
         'div',
         { class: 'card', style: `--edge:${PLAYER_STYLES[i]!.edge}` },
         this.swatch(i),
-        h('div', { class: 'card-text' }, h('div', { class: 'card-name' }, p.name), h('div', { class: 'card-bites' })),
+        h(
+          'div',
+          { class: 'card-text' },
+          h('div', { class: 'card-name' }, p.name),
+          h('div', { class: 'card-bites' }),
+        ),
+        i === this.you ? h('span', { class: 'badge you card-you' }, 'You') : null,
+        h('span', { class: 'emote-bubble', hidden: true, 'aria-live': 'polite' }),
       ),
     );
     this.preview = h('canvas', {
@@ -119,6 +157,15 @@ export class GameScreen {
       (this.btn[key] = h('button', { type: 'button', title, class: `${key}-btn`, onclick: fn }, label));
 
     this.dialog = h('div', { class: 'dialog', hidden: true });
+    if (this.net && this.you !== null) {
+      const net = this.net;
+      this.emoteRow = h(
+        'div',
+        { class: 'emotes', role: 'group', 'aria-label': 'Quick messages' },
+        ...EMOTES.map((id) => h('button', { type: 'button', class: 'emote', onclick: () => net.send({ t: 'emote', id }) }, EMOTE_LABEL[id])),
+      );
+    }
+    const timed = on ? on.snapshot.state.config.turnTimeLimit !== null : !!opts.config.turnTimeLimit;
 
     this.root = h(
       'section',
@@ -139,7 +186,7 @@ export class GameScreen {
               'div',
               { class: 'piece-box' },
               this.preview,
-              h('div', { class: 'timer', hidden: !opts.config.turnTimeLimit }, this.timerBar),
+              h('div', { class: 'timer', hidden: !timed }, this.timerBar),
             ),
             this.miniBox,
           ),
@@ -152,16 +199,18 @@ export class GameScreen {
             mk('pass', 'Pass', 'Give up your turn (G)', () => this.humanAct({ type: 'pass' })),
             mk('fit', 'Whole board', 'See the whole board (0)', () => this.renderer.fit()),
             mk('mine', 'My fungus', 'Centre on your fungus (C)', () => this.centreOnMine()),
-            mk('pause', 'Pause', 'Pause (P)', () => this.togglePause()),
+            on ? null : mk('pause', 'Pause', 'Pause (P)', () => this.togglePause()),
             mk('help', 'Controls', 'Show controls (?)', () => this.showControls()),
-            mk('exit', 'Exit', 'Leave this game', () => this.confirmExit()),
+            mk('exit', on ? 'Leave' : 'Exit', 'Leave this game', () => this.confirmExit()),
           ),
+          this.emoteRow,
           this.status,
         ),
       ),
       this.dialog,
     );
 
+    if (import.meta.env.DEV) this.exposeForTests();
     this.renderer.onFrame = () => this.drawMinimap();
     this.bindInput();
     this.resizeObs = new ResizeObserver(() => this.layout());
@@ -170,6 +219,7 @@ export class GameScreen {
       this.layout();
       this.initialCamera();
       this.beginTurn();
+      if (on) this.setServerTimer(on.snapshot.timeLeft);
     });
   }
 
@@ -195,11 +245,19 @@ export class GameScreen {
   private get me(): number {
     return this.s.current;
   }
+  /** Is it the turn of a person at this screen? */
   private get isHumanTurn(): boolean {
-    return this.s.winner === null && this.s.players[this.me]!.kind === 'human';
+    if (this.s.winner !== null) return false;
+    if (this.net) return this.me === this.you && !this.standIns.has(this.me);
+    return this.s.players[this.me]!.kind === 'human';
   }
   private get canAct(): boolean {
-    return this.isHumanTurn && !this.paused && !this.busy;
+    return this.isHumanTurn && !this.paused && !this.busy && !this.waiting;
+  }
+  /** Whose fungus to look at by default. */
+  private get home(): number {
+    if (this.net) return this.you ?? 0;
+    return Math.max(0, this.s.players.findIndex((p) => p.kind === 'human'));
   }
 
   private say(msg: string): void {
@@ -213,8 +271,7 @@ export class GameScreen {
 
   private initialCamera(): void {
     if (this.s.size <= START_ZOOMED_ABOVE) return;
-    const firstHuman = this.s.players.findIndex((p) => p.kind === 'human');
-    const target = this.s.players[firstHuman >= 0 ? firstHuman : 0]!.head;
+    const target = this.s.players[this.home]!.head;
     this.renderer.cam = { cx: target.c + 0.5, cy: target.r + 0.5, across: COMFORT_ACROSS };
     this.renderer.resize(this.s.size); // re-clamps the camera
   }
@@ -231,8 +288,7 @@ export class GameScreen {
   }
 
   private centreOnMine(): void {
-    const humanTurn = this.isHumanTurn;
-    const p = humanTurn ? this.me : Math.max(0, this.s.players.findIndex((pl) => pl.kind === 'human' && pl.alive));
+    const p = this.isHumanTurn ? this.me : this.net ? this.home : Math.max(0, this.s.players.findIndex((pl) => pl.kind === 'human' && pl.alive));
     this.renderer.centreOn(this.s.players[p]!.head, COMFORT_ACROSS);
   }
 
@@ -321,7 +377,9 @@ export class GameScreen {
       const card = this.cards[i]!;
       card.classList.toggle('current', i === this.me && this.s.winner === null);
       card.classList.toggle('dead', !p.alive);
-      card.querySelector('.card-bites')!.textContent = p.alive ? `${biteWord(biteLevel(this.s, i))}: ${p.bites}` : 'Eaten';
+      card.classList.toggle('standin', this.standIns.has(i) && p.alive);
+      const tag = this.standIns.has(i) && p.alive ? ' · CPU playing' : '';
+      card.querySelector('.card-bites')!.textContent = p.alive ? `${biteWord(biteLevel(this.s, i))}: ${p.bites}${tag}` : 'Eaten';
     });
     const act = this.canAct;
     const rotates = SHAPES[this.s.piece]!.masks.length > 1;
@@ -330,15 +388,19 @@ export class GameScreen {
     this.btn.bite!.disabled = !act || this.s.players[this.me]!.bites < 1;
     this.btn.bite!.setAttribute('aria-pressed', String(this.mode === 'bite'));
     this.btn.pass!.disabled = !act;
-    this.btn.pause!.textContent = this.paused ? 'Resume' : 'Pause';
-    this.btn.pause!.disabled = this.s.winner !== null;
+    if (this.btn.pause) {
+      this.btn.pause.textContent = this.paused ? 'Resume' : 'Pause';
+      this.btn.pause.disabled = this.s.winner !== null;
+    }
+    this.emoteRow?.classList.toggle('dead', this.you !== null && !this.s.players[this.you]!.alive);
     this.preview.classList.toggle('can-rotate', act && this.mode === 'place' && rotates);
   }
 
   // ------------------------------------------------------------ turn flow
 
   private beginTurn(): void {
-    clearInterval(this.timerHandle);
+    clearTimeout(this.cpuTimer);
+    if (!this.net) clearInterval(this.timerHandle);
     // Let a death play out before anyone moves again.
     const wait = this.renderer.busyFor();
     if (wait > 0) {
@@ -356,6 +418,15 @@ export class GameScreen {
     this.touchAim = null;
     if (this.s.winner !== null) return this.gameOver();
     const p = this.s.players[this.me]!;
+    if (this.net) {
+      // The server runs the clock, the CPUs and auto-passes; we only show what's happening.
+      if (this.isHumanTurn) {
+        this.followCurrent();
+        this.say(hasAnyMove(this.s, this.me) ? `${p.name}, your move.` : 'You have nowhere to grow — passing.');
+      } else this.say(`${p.name}${this.standIns.has(this.me) ? ' (CPU)' : ''} is growing…`);
+      this.redraw();
+      return;
+    }
     if (p.kind === 'human') {
       this.followCurrent();
       if (!hasAnyMove(this.s, this.me)) {
@@ -477,6 +548,13 @@ export class GameScreen {
       this.say(ERRORS[res.error] ?? res.error);
       return false;
     }
+    if (this.net) {
+      // Checked locally for instant feedback; the server has the final word.
+      this.waiting = true;
+      this.net.send({ t: 'act', seq: this.seq, action: a });
+      this.redraw();
+      return true;
+    }
     this.absorb(res.state, res.events);
     if (a.type === 'bite') {
       this.mode = 'place';
@@ -518,7 +596,7 @@ export class GameScreen {
   }
 
   private togglePause(): void {
-    if (this.s.winner !== null) return;
+    if (this.s.winner !== null || this.net) return;
     this.paused = !this.paused;
     this.root.classList.toggle('paused', this.paused);
     this.say(this.paused ? 'Paused.' : '');
@@ -796,12 +874,148 @@ export class GameScreen {
     }
   }
 
+  /** Development builds only: a handle for automated tests to drive the game. */
+  private exposeForTests(): void {
+    if (!import.meta.env.DEV) return; // dead in production builds, so the bundler drops it
+    (window as unknown as { __fungus: unknown }).__fungus = {
+      state: () => this.s,
+      seq: () => this.seq,
+      you: () => this.you,
+      canAct: () => this.canAct,
+      hash: () => stateHash(this.s),
+      placeAny: () => {
+        if (!this.canAct) return false;
+        const moves = legalPlacements(this.s, this.me);
+        const m = moves[Math.floor(Math.random() * moves.length)];
+        return this.commit(m ? { type: 'place', rotation: m.rotation, r: m.r, c: m.c } : { type: 'pass' });
+      },
+    };
+  }
+
+  // ------------------------------------------------------------ online
+
+  /** Messages from the server for this game (the app routes them here). */
+  onServer(m: ServerMessage): void {
+    if (!this.net) return;
+    switch (m.t) {
+      case 'applied':
+        return this.onApplied(m);
+      case 'game':
+        return this.loadSnapshot(m.game);
+      case 'timer':
+        return this.setServerTimer(m.timeLeft);
+      case 'emote':
+        return this.showEmote(m.player, m.id);
+      case 'notice':
+        return this.say(m.text);
+      case 'error':
+        if (m.code === 'not-your-turn' || m.code === 'illegal') {
+          this.waiting = false;
+          sfx.error();
+          this.say(ERRORS[m.text] ?? m.text);
+          this.redraw();
+        } else this.say(m.text);
+        return;
+    }
+  }
+
+  /** Connection dropped or came back. */
+  onNetStatus(online: boolean): void {
+    if (!online) {
+      this.waiting = false;
+      this.say('Connection lost — reconnecting…');
+    }
+    this.root.classList.toggle('offline', !online);
+    this.redraw();
+  }
+
+  private onApplied(m: Extract<ServerMessage, { t: 'applied' }>): void {
+    if (this.resyncing || m.seq <= this.seq) return; // already have it, or a snapshot is on its way
+    if (m.seq !== this.seq + 1) return this.resync();
+    const res = applyAction(this.s, m.player, m.action);
+    if (!res.ok || stateHash(res.state) !== m.hash) {
+      console.warn('fungus: out of step with the server, resyncing', res.ok ? 'hash mismatch' : res.error);
+      return this.resync();
+    }
+    this.seq = m.seq;
+    this.standIns = new Set(m.standIns);
+    if (m.player === this.you) this.waiting = false;
+    const endsTurn = m.action.type !== 'bite' || res.state.winner !== null;
+    this.absorb(res.state, res.events);
+    this.setServerTimer(m.timeLeft);
+    if (endsTurn) this.beginTurn();
+    else if (m.player === this.you) {
+      this.mode = 'place';
+      this.bite = null;
+      this.redraw();
+    }
+  }
+
+  private resync(): void {
+    this.resyncing = true;
+    this.net?.send({ t: 'resync' });
+  }
+
+  private loadSnapshot(g: GameSnapshot): void {
+    const fresh = g.state.size !== this.s.size;
+    this.resyncing = false;
+    this.waiting = false;
+    this.s = g.state;
+    this.seq = g.seq;
+    this.you = g.you;
+    this.standIns = new Set(g.standIns);
+    if (fresh) this.layout();
+    this.beginTurn();
+    this.setServerTimer(g.timeLeft);
+  }
+
+  /** Show the server's turn clock counting down. */
+  private setServerTimer(timeLeft: number | null): void {
+    clearInterval(this.timerHandle);
+    const limit = (this.s.config.turnTimeLimit ?? 0) * 1000;
+    if (timeLeft === null || !limit) {
+      this.timerBar.style.width = '0%';
+      return;
+    }
+    this.deadline = performance.now() + timeLeft;
+    const tick = () => {
+      const left = this.deadline - performance.now();
+      this.timerBar.style.width = `${Math.max(0, Math.min(1, left / limit)) * 100}%`;
+      if (left <= 0) clearInterval(this.timerHandle);
+    };
+    tick();
+    this.timerHandle = window.setInterval(tick, 100);
+  }
+
+  private showEmote(player: number, id: Emote): void {
+    const bubble = this.cards[player]?.querySelector<HTMLElement>('.emote-bubble');
+    if (!bubble) return;
+    bubble.textContent = EMOTE_LABEL[id];
+    bubble.hidden = false;
+    bubble.classList.remove('pop');
+    void bubble.offsetWidth; // restart the animation
+    bubble.classList.add('pop');
+    clearTimeout(Number(bubble.dataset.timer));
+    bubble.dataset.timer = String(window.setTimeout(() => (bubble.hidden = true), 2600));
+  }
+
   // ------------------------------------------------------------ end
 
   private gameOver(): void {
     clearInterval(this.timerHandle);
     const w = this.s.players[this.s.winner!]!;
     sfx.win();
+    if (this.opts.online) {
+      const on = this.opts.online;
+      const mine = this.s.winner === this.you;
+      this.say(`${w.name} wins.`);
+      this.redraw();
+      this.showDialog(mine ? 'Your fungus wins!' : `${w.name}’s fungus wins`, `${this.s.round} rounds of growth.`, [
+        ['Back to room', () => on.onBackToRoom()],
+        ['Leave', () => this.opts.onExit()],
+      ]);
+      return;
+    }
     recordResult(
       this.s.players.map((p) => p.name),
       w.name,
@@ -825,6 +1039,15 @@ export class GameScreen {
 
   private confirmExit(): void {
     if (this.s.winner !== null) return this.opts.onExit();
+    if (this.net) {
+      const playing = this.you !== null && this.s.players[this.you]!.alive;
+      if (!playing) return this.opts.onExit();
+      this.showDialog('Leave this game?', 'A CPU will play your fungus for the rest of the game.', [
+        ['Leave', () => this.opts.onExit()],
+        ['Keep playing', () => this.hideDialog()],
+      ]);
+      return;
+    }
     const wasPaused = this.paused;
     if (!wasPaused) this.togglePause();
     this.showDialog('Leave this game?', 'The game in progress will be lost.', [

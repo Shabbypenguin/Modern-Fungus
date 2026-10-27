@@ -8,8 +8,11 @@
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "dev": "npm run dev -w @fungus/client",
-    "build": "npm run build -w @fungus/client"
+    "dev": "node scripts/dev.mjs",
+    "dev:client": "npm run dev -w @fungus/client",
+    "dev:server": "npm run dev -w @fungus/server",
+    "build": "npm run build -w @fungus/client && npm run build -w @fungus/server",
+    "start": "node packages/server/dist/server.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",

@@ -987,7 +987,10 @@ kbd {
     display: grid;
     overflow: visible;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'cards view' 'controls controls' 'status status';
+    grid-template-areas: 'cards view' 'controls controls' 'emotes emotes' 'status status';
+  }
+  .side .emotes {
+    grid-area: emotes;
   }
   .cards {
     grid-area: cards;
@@ -1090,5 +1093,343 @@ kbd {
   * {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* ---------- online: menu and lobby share the setup window's layout ---------- */
+
+.online-window,
+.lobby-window {
+  width: min(66rem, 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.online,
+.lobby {
+  padding: 0.75rem 1.25rem 1rem;
+  display: grid;
+  grid-template-columns: minmax(16rem, 23rem) minmax(0, 1fr);
+  grid-template-areas: 'left right' 'actions actions';
+  gap: 0.75rem 1.75rem;
+}
+
+.online-left,
+.lobby-left {
+  grid-area: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.online-right,
+.lobby-right {
+  grid-area: right;
+  min-width: 0;
+}
+
+.online h2,
+.lobby h2 {
+  font-size: var(--step-1);
+  margin: 0 0 0.35rem;
+}
+
+.online .field p,
+.lobby-left p {
+  margin: 0 0 0.45rem;
+}
+
+.online .status,
+.lobby .status {
+  flex: 1;
+  min-height: 0;
+}
+
+.online input[type='text'],
+.online select {
+  font: inherit;
+  min-height: 2.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--ink);
+  background: var(--platinum-hi);
+}
+
+.online #net-name {
+  width: 100%;
+}
+
+.online .opt {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.join-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.code-input {
+  width: 6.5em;
+  font-family: var(--pixel) !important;
+  font-size: var(--step-1) !important;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.room-list {
+  max-height: min(60dvh, 30rem);
+  overflow-y: auto;
+}
+
+table.rooms {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+}
+
+table.rooms th,
+table.rooms td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--platinum);
+}
+
+table.rooms td:last-child {
+  text-align: right;
+}
+
+table.rooms button {
+  min-height: 2rem;
+  padding: 0.1rem 0.8rem;
+}
+
+.room-code {
+  font-family: var(--pixel);
+  font-weight: 600;
+  font-size: var(--step-5);
+  letter-spacing: 0.15em;
+  line-height: 1;
+  margin: 0 0 0.3rem !important;
+  user-select: all;
+}
+
+.lobby-left .copy {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.lobby-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: min(62dvh, 36rem);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.lobby-seat {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  border: 0.16rem solid var(--edge);
+  background: var(--platinum-hi);
+  padding: 0.3rem 0.45rem;
+}
+
+.lobby-seat.closed {
+  opacity: 0.55;
+}
+
+.lobby-seat .swatch {
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid var(--ink);
+}
+
+.lobby-seat .who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.who-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.seat-actions button {
+  min-height: 2rem;
+  padding: 0.1rem 0.7rem;
+}
+
+.seg.small span {
+  padding: 0.15rem 0.45rem;
+}
+
+.badge {
+  font-size: var(--step--1);
+  font-weight: 700;
+  border: 1px solid var(--ink);
+  border-radius: 0.3rem;
+  padding: 0 0.35rem;
+  background: var(--platinum);
+  white-space: nowrap;
+}
+
+.badge.you {
+  background: var(--ink);
+  color: var(--platinum-hi);
+}
+
+.badge.away {
+  border-style: dashed;
+}
+
+.card-you {
+  position: absolute;
+  top: -0.55rem;
+  right: 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.cards {
+  padding-top: 0.5rem;
+}
+
+.seat-actions:empty {
+  display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Connection banner, shown over everything while reconnecting. */
+.net-banner {
+  position: fixed;
+  top: 0.5rem;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 30;
+  background: var(--ink);
+  color: var(--platinum-hi);
+  padding: 0.35rem 1rem;
+  border-radius: 0.45rem;
+  font-weight: 700;
+  max-width: calc(100vw - 2rem);
+}
+
+.net-banner[hidden] {
+  display: none;
+}
+
+.game-window.offline .board {
+  filter: grayscale(0.6);
+}
+
+/* ---------- online game: emotes and stand-ins ---------- */
+
+.card {
+  position: relative;
+}
+
+.card.standin .swatch {
+  outline: 0.15rem dashed var(--ink);
+  outline-offset: 0.1rem;
+}
+
+.emote-bubble {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  translate: 0 -50%;
+  background: var(--ink);
+  color: var(--platinum-hi);
+  font-weight: 700;
+  padding: 0.1rem 0.6rem;
+  border-radius: 0.9rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.emote-bubble[hidden] {
+  display: none;
+}
+
+.emote-bubble.pop {
+  animation: emote-pop 0.25s ease-out;
+}
+
+@keyframes emote-pop {
+  from {
+    scale: 0.4;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emote-bubble.pop {
+    animation: none;
+  }
+}
+
+.emotes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.emotes .emote {
+  min-height: 1.9rem;
+  padding: 0.05rem 0.55rem;
+  font-size: var(--step--1);
+}
+
+.emotes.dead {
+  opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .online,
+  .lobby {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'left' 'right' 'actions';
+  }
+  .room-code {
+    font-size: var(--step-2);
+  }
+  .lobby-seat {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .lobby-seat .seat-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .lobby-seats,
+  .room-list {
+    max-height: none;
+    overflow: visible;
   }
 }
