@@ -7,10 +7,10 @@ Where the original is silent, the gap is marked **[ours]**.
 ## C1. Board & setup
 - Grid **20 × 20**. Cells are empty, or owned by player 1–4.
 - 2–4 players, each slot Human / CPU / None.
-- Head start positions (row, col, 0-indexed) — `3:01124`:
-  - 2 players: (5,14), (14,5)
-  - 3 players: (5,13), (9,5), (14,12)
-  - 4 players: (5,5), (14,5), (14,14), (5,14)
+- Head start positions (row, col, 0-indexed) — `3:01124`. The original stores the board column-major; these are converted:
+  - 2 players: (14,5), (5,14)
+  - 3 players: (13,5), (5,9), (12,14)
+  - 4 players: (5,5) red, (5,14) green, (14,14) blue, (14,5) yellow (matches the original's screenshots)
 - A **tooth** sits on each of the 4 corner cells (overlay only; the cell is still empty and placeable) — `3:0120c`.
 - Everyone starts with **0 bites** (2.0 behaviour; the code clears bites at game start — `2:00de0`).
 - Optional turn time limit, **3–60 s**.

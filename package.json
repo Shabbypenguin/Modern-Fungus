@@ -2,13 +2,18 @@
   "name": "fungus",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev -w @fungus/client",
+    "build": "npm run build -w @fungus/client"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
-    "vitest": "2.1.8"
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.4"
   }
 }

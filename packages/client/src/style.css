@@ -1,0 +1,574 @@
+/* Fungus — System 7 window chrome; the fungi supply all the colour. */
+:root {
+  --desktop: #8c8c8c;
+  --desktop-dot: #7a7a7a;
+  --platinum: #dddddd;
+  --platinum-hi: #ffffff;
+  --platinum-lo: #888888;
+  --ink: #000000;
+  --muted: #555555;
+  --focus: #2c34c4;
+  --ui: 'Pixelify Sans', 'Chicago', 'Geneva', system-ui, sans-serif;
+  --logo: 'Rubik Wet Paint', 'Pixelify Sans', cursive;
+  --step--1: 0.8125rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.6rem;
+  --step-5: clamp(3.4rem, 10vw, 5.8rem);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--desktop);
+  background-image: radial-gradient(var(--desktop-dot) 0.6px, transparent 0.8px);
+  background-size: 3px 3px;
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: var(--step-0);
+  line-height: 1.35;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+/* ---------- window chrome ---------- */
+
+.window {
+  background: var(--platinum);
+  border: 1px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  max-width: 100%;
+}
+
+.titlebar {
+  position: relative;
+  height: 22px;
+  border-bottom: 1px solid var(--ink);
+  background: repeating-linear-gradient(to bottom, var(--platinum) 0 3px, var(--platinum-lo) 3px 4px) 4px 4px / calc(100% - 8px) 13px no-repeat,
+    var(--platinum);
+  display: grid;
+  place-items: center;
+}
+
+.titlebar span {
+  background: var(--platinum);
+  padding: 0 10px;
+  font-weight: 600;
+  font-size: var(--step--1);
+}
+
+button {
+  font: inherit;
+  font-size: var(--step--1);
+  color: var(--ink);
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+  border-radius: 7px;
+  padding: 6px 14px;
+  min-height: 32px;
+  cursor: pointer;
+  box-shadow: inset -1px -1px 0 var(--platinum-lo), inset 1px 1px 0 var(--platinum-hi);
+}
+
+button:active:not(:disabled),
+button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--platinum-hi);
+}
+
+button:disabled {
+  color: var(--platinum-lo);
+  border-color: var(--platinum-lo);
+  cursor: default;
+}
+
+/* Classic Mac default-button ring. */
+button.default {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+  margin: 5px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus) !important;
+  outline-offset: 2px;
+}
+
+input[type='text'],
+input[type='number'] {
+  font: inherit;
+  border: 1px solid var(--ink);
+  background: var(--platinum-hi);
+  padding: 4px 6px;
+  border-radius: 0;
+  min-height: 30px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.status {
+  min-height: 2.7em;
+  margin: 0;
+  font-size: var(--step--1);
+}
+
+/* ---------- setup ---------- */
+
+.setup-window {
+  width: min(720px, 100%);
+}
+
+.setup {
+  padding: 8px 24px 20px;
+  display: grid;
+  gap: 16px;
+}
+
+/* The one loud thing: a dripping, tie-dyed logo. */
+.logo {
+  margin: 4px 0 0;
+  font-family: var(--logo);
+  font-weight: 400;
+  font-size: var(--step-5);
+  line-height: 1;
+  text-align: center;
+  background:
+    radial-gradient(circle at 14% 40%, #d8261c 0 18%, transparent 30%),
+    radial-gradient(circle at 38% 70%, #f2cf1d 0 16%, transparent 28%),
+    radial-gradient(circle at 62% 30%, #239650 0 18%, transparent 30%),
+    radial-gradient(circle at 86% 65%, #2c34c4 0 18%, transparent 30%),
+    linear-gradient(90deg, #d8261c, #f2cf1d, #239650, #2c34c4);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ink);
+}
+
+.best h2 {
+  margin: 0 0 6px;
+  font-size: var(--step-0);
+  font-weight: 600;
+}
+
+.best table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+  font-size: var(--step--1);
+}
+
+.best th,
+.best td {
+  padding: 3px 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.best th:first-child,
+.best td:first-child {
+  text-align: left;
+}
+
+.best thead th {
+  border-bottom: 1px solid var(--ink);
+  font-weight: 600;
+}
+
+.best p {
+  margin: 0;
+  font-size: var(--step--1);
+}
+
+/* Four seats in the original's quadrant arrangement. */
+.seats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+}
+
+.seat {
+  margin: 0;
+  border: 3px solid var(--edge);
+  background: var(--platinum-hi);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'sw name' 'seg seg';
+  gap: 8px 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.seat .swatch {
+  grid-area: sw;
+  border: 1px solid var(--ink);
+}
+
+.seat input[type='text'] {
+  grid-area: name;
+  width: 100%;
+  min-width: 0;
+}
+
+.seat.empty .swatch,
+.seat.empty input[type='text'] {
+  opacity: 0.35;
+}
+
+.seg {
+  grid-area: seg;
+  display: flex;
+  border: 1px solid var(--ink);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.seg label {
+  flex: 1;
+  position: relative;
+}
+
+.seg input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.seg span {
+  display: block;
+  text-align: center;
+  padding: 5px 0;
+  font-size: var(--step--1);
+}
+
+.seg label + label span {
+  border-left: 1px solid var(--ink);
+}
+
+.seg input:checked + span {
+  background: var(--ink);
+  color: var(--platinum-hi);
+}
+
+.seg input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--step--1);
+}
+
+.options input[type='number'] {
+  width: 4.5em;
+}
+
+.options .sound {
+  margin-left: auto;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.credit {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+
+/* ---------- game ---------- */
+
+.game-window {
+  width: min(1100px, 100%);
+}
+
+.game {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 14px;
+  padding: 14px;
+}
+
+.board-wrap {
+  min-width: 0;
+  height: min(calc(100dvh - 90px), 820px);
+  display: grid;
+  place-items: center start;
+}
+
+.board {
+  display: block;
+  border: 1px solid var(--ink);
+  touch-action: none;
+  cursor: crosshair;
+  background: #c9c9c9;
+}
+
+.paused .board {
+  filter: grayscale(1) blur(3px);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cards {
+  display: grid;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--platinum-hi);
+  border: 2px solid var(--platinum-lo);
+  padding: 6px 8px;
+  opacity: 0.75;
+}
+
+.card .swatch {
+  border: 1px solid var(--ink);
+  flex: none;
+  width: 34px;
+  height: 34px;
+}
+
+.card.current {
+  border: 3px solid var(--edge);
+  padding: 5px 7px;
+  opacity: 1;
+}
+
+.card.current .card-name {
+  font-size: var(--step-2);
+}
+
+.card.dead {
+  opacity: 0.4;
+}
+
+.card.dead .card-name {
+  text-decoration: line-through;
+}
+
+.card-text {
+  min-width: 0;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: var(--step-1);
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-bites {
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.piece-box {
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  gap: 6px;
+}
+
+.preview {
+  width: 96px;
+  height: 96px;
+}
+
+.timer {
+  width: 100%;
+  height: 8px;
+  border: 1px solid var(--ink);
+}
+
+.timer-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--ink);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Place is only needed for touch aiming; hide it for mouse users. */
+@media (hover: hover) and (pointer: fine) {
+  .controls button:nth-child(2) {
+    display: none;
+  }
+}
+
+/* ---------- dialogs ---------- */
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.dialog[hidden] {
+  display: none;
+}
+
+.dialog-box {
+  width: min(420px, 100%);
+  padding: 0 0 14px;
+  border-width: 2px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.dialog-box h2 {
+  margin: 16px 18px 6px;
+  font-size: var(--step-1);
+}
+
+.dialog-box p {
+  margin: 0 18px 8px;
+  font-size: var(--step--1);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 8px 18px 0;
+}
+
+.help {
+  width: min(560px, 100%);
+}
+
+.help-body {
+  max-height: min(70dvh, 560px);
+  overflow: auto;
+  padding: 6px 18px;
+  max-width: 68ch;
+}
+
+.help-body h3 {
+  margin: 12px 0 2px;
+  font-size: var(--step-0);
+}
+
+.help-body p {
+  margin: 0 0 6px;
+  font-size: var(--step--1);
+}
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 760px) {
+  #app {
+    padding: 8px;
+    place-items: start center;
+  }
+  .setup {
+    padding: 6px 12px 16px;
+  }
+  .seats {
+    grid-template-columns: 1fr;
+  }
+  .game {
+    grid-template-columns: 1fr;
+    padding: 8px;
+    gap: 10px;
+  }
+  .board-wrap {
+    height: auto;
+    aspect-ratio: 1;
+    place-items: center;
+  }
+  .side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'cards piece' 'controls controls' 'status status';
+  }
+  .cards {
+    grid-area: cards;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .card {
+    min-width: 0;
+    gap: 6px;
+    padding: 4px 6px;
+  }
+  .card .swatch {
+    width: 26px;
+    height: 26px;
+  }
+  .card.current .card-name {
+    font-size: var(--step-1);
+  }
+  .piece-box {
+    grid-area: piece;
+    align-self: start;
+  }
+  .preview {
+    width: 72px;
+    height: 72px;
+  }
+  .controls {
+    grid-area: controls;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .controls button {
+    padding: 6px 4px;
+  }
+  .status {
+    grid-area: status;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

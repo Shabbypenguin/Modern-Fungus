@@ -5,20 +5,21 @@ export const MAX_PLAYERS = 16;
 
 /** Original Fungus 2.0 head positions on a 20×20 board (CODE 3 @ 0x01124). */
 const CLASSIC_HEADS: Record<number, Pos[]> = {
+  // The original stores the board column-major; these are already converted to (row, col).
   2: [
-    { r: 5, c: 14 },
     { r: 14, c: 5 },
+    { r: 5, c: 14 },
   ],
   3: [
-    { r: 5, c: 13 },
-    { r: 9, c: 5 },
-    { r: 14, c: 12 },
+    { r: 13, c: 5 },
+    { r: 5, c: 9 },
+    { r: 12, c: 14 },
   ],
   4: [
     { r: 5, c: 5 },
-    { r: 14, c: 5 },
-    { r: 14, c: 14 },
     { r: 5, c: 14 },
+    { r: 14, c: 14 },
+    { r: 14, c: 5 },
   ],
 };
 

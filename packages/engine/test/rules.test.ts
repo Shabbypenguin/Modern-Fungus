@@ -18,9 +18,9 @@ describe('C1 setup', () => {
     expect(s.size).toBe(20);
     expect(s.players.map((p) => p.head)).toEqual([
       { r: 5, c: 5 },
-      { r: 14, c: 5 },
-      { r: 14, c: 14 },
       { r: 5, c: 14 },
+      { r: 14, c: 14 },
+      { r: 14, c: 5 },
     ]);
     expect(s.players.every((p) => p.bites === 0)).toBe(true);
     expect(s.teeth.flatMap((t, i) => (t ? [i] : []))).toEqual([0, 19, 380, 399]);
