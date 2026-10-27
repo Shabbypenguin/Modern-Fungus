@@ -1,6 +1,6 @@
 import './style.css';
 import type { PlayerConfig } from '@fungus/engine';
-import { h } from './dom';
+import { h, titlebar } from './dom';
 import { GameScreen } from './game';
 import { setSound } from './sound';
 import { load, save } from './storage';
@@ -130,7 +130,7 @@ function showSetup(): void {
     h(
       'section',
       { class: 'window setup-window' },
-      h('header', { class: 'titlebar' }, h('span', {}, 'Fungus')),
+      titlebar('Fungus'),
       h(
         'div',
         { class: 'setup' },
@@ -188,7 +188,7 @@ function showHelp(): void {
     h(
       'div',
       { class: 'window dialog-box help', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'How to play' },
-      h('header', { class: 'titlebar' }, h('span', {}, 'How to play')),
+      titlebar('How to play', () => close(), 'Close'),
       h(
         'div',
         { class: 'help-body' },

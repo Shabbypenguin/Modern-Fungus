@@ -65,6 +65,35 @@ body {
   place-items: center;
 }
 
+.close-box {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 13px;
+  height: 13px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  border: 1px solid var(--ink);
+  background: var(--platinum);
+  /* Clears the pinstripes around the box, like the real thing. */
+  box-shadow: 0 0 0 2px var(--platinum), inset 1px 1px 0 var(--platinum-hi), inset -1px -1px 0 var(--platinum-lo);
+  cursor: pointer;
+}
+
+/* Bigger hit area for fingers without changing the look. */
+.close-box::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.close-box:active {
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--platinum);
+}
+
 .titlebar span {
   background: var(--platinum);
   padding: 0 10px;

@@ -11,7 +11,7 @@ import {
   shapeCells,
 } from '@fungus/engine';
 import type { Action, GameEvent, GameState, PlayerConfig, Pos } from '@fungus/engine';
-import { h } from './dom';
+import { h, titlebar } from './dom';
 import { BoardRenderer } from './render';
 import type { Overlay } from './render';
 import { sfx } from './sound';
@@ -93,7 +93,7 @@ export class GameScreen {
     this.root = h(
       'section',
       { class: 'window game-window' },
-      h('header', { class: 'titlebar' }, h('span', {}, 'Fungus')),
+      titlebar('Fungus', () => this.confirmExit(), 'Exit game'),
       h(
         'div',
         { class: 'game' },
