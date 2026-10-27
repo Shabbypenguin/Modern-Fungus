@@ -137,7 +137,17 @@ export function makeTile(style: PlayerStyle, index: number, scale: number): HTML
 }
 
 /** Draw a fungus head: a little face, like the original. */
-export function drawFace(g: CanvasRenderingContext2D, x: number, y: number, size: number, style: PlayerStyle, active: boolean): void {
+export type FaceMood = 'active' | 'idle' | 'dead';
+
+export function drawFace(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  style: PlayerStyle,
+  mood: FaceMood | boolean,
+): void {
+  const m: FaceMood = mood === true ? 'active' : mood === false ? 'idle' : mood;
   const cx = x + size / 2;
   const cy = y + size / 2;
   const r = size * 0.42;
@@ -151,12 +161,29 @@ export function drawFace(g: CanvasRenderingContext2D, x: number, y: number, size
   g.stroke();
   g.fillStyle = '#000';
   const eye = Math.max(1, size * 0.07);
+  if (m === 'dead') {
+    // X eyes and a wobbly frown.
+    const e = r * 0.2;
+    g.beginPath();
+    for (const ex of [cx - r * 0.38, cx + r * 0.38]) {
+      g.moveTo(ex - e, cy - r * 0.2 - e);
+      g.lineTo(ex + e, cy - r * 0.2 + e);
+      g.moveTo(ex + e, cy - r * 0.2 - e);
+      g.lineTo(ex - e, cy - r * 0.2 + e);
+    }
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy + r * 0.62, r * 0.4, 1.15 * Math.PI, 1.85 * Math.PI);
+    g.stroke();
+    g.restore();
+    return;
+  }
   g.beginPath();
   g.arc(cx - r * 0.38, cy - r * 0.2, eye, 0, Math.PI * 2);
   g.arc(cx + r * 0.38, cy - r * 0.2, eye, 0, Math.PI * 2);
   g.fill();
   g.beginPath();
-  if (active) g.arc(cx, cy + r * 0.05, r * 0.5, 0.15 * Math.PI, 0.85 * Math.PI);
+  if (m === 'active') g.arc(cx, cy + r * 0.05, r * 0.5, 0.15 * Math.PI, 0.85 * Math.PI);
   else {
     g.moveTo(cx - r * 0.4, cy + r * 0.4);
     g.lineTo(cx + r * 0.4, cy + r * 0.4);

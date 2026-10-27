@@ -21,6 +21,7 @@ export interface Saved {
   seats: Seat[];
   timeLimit: number | null;
   sound: boolean;
+  zoom: number;
 }
 
 const KEY = 'fungus.v1';
@@ -35,6 +36,7 @@ const DEFAULTS: Saved = {
   ],
   timeLimit: null,
   sound: true,
+  zoom: 1,
 };
 
 export function load(): Saved {
@@ -47,6 +49,7 @@ export function load(): Saved {
       seats: Array.isArray(v.seats) && v.seats.length === 4 ? v.seats : structuredClone(DEFAULTS.seats),
       timeLimit: typeof v.timeLimit === 'number' ? v.timeLimit : null,
       sound: v.sound !== false,
+      zoom: typeof v.zoom === 'number' ? v.zoom : 1,
     };
   } catch {
     return structuredClone(DEFAULTS);

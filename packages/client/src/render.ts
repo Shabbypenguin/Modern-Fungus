@@ -8,6 +8,19 @@ export interface Overlay {
   bite?: { cells: Pos[]; valid: boolean };
   /** Cells that can start a bite (shown while in bite mode). */
   biteStarts?: Pos[];
+  /** Bite start under the cursor before pressing. */
+  biteHover?: Pos;
+}
+
+/** A player being eaten: their fungus turns into the killer's, rippling out from the head. */
+interface Death {
+  victim: number;
+  killer: number;
+  head: Pos;
+  /** Cells still to convert, each with its delay (ms) from t0. */
+  cells: { pos: Pos; at: number }[];
+  t0: number;
+  end: number;
 }
 
 interface Effect {
@@ -17,6 +30,10 @@ interface Effect {
 }
 
 const EFFECT_MS = 380;
+const DEATH_FACE_MS = 650; // X-eyes + shockwave before the fungus starts converting
+const DEATH_STEP_MS = 45; // per cell of distance from the head
+const DEATH_MAX_SPREAD_MS = 1100;
+const CONVERT_FLASH_MS = 260;
 const BOARD_BG = '#c9c9c9';
 const GRID = '#b3b3b3';
 
@@ -29,6 +46,7 @@ export class BoardRenderer {
   private patterns: CanvasPattern[] = [];
   private patternCell = 0;
   private effects: Effect[] = [];
+  private deaths: Death[] = [];
   private raf = 0;
   private last: { s: GameState; o: Overlay } | null = null;
   private reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -85,12 +103,31 @@ export class BoardRenderer {
     this.kick();
   }
 
+  /** Play the death of `victim`; `cells` are the cells the killer inherited. */
+  addDeath(victim: number, killer: number, head: Pos, cells: Pos[]): void {
+    if (this.reduceMotion) return;
+    const dist = (q: Pos) => Math.hypot(q.r - head.r, q.c - head.c);
+    const far = Math.max(1, ...cells.map(dist));
+    const k = Math.min(DEATH_STEP_MS, DEATH_MAX_SPREAD_MS / far);
+    const t0 = performance.now();
+    const list = cells.map((pos) => ({ pos, at: DEATH_FACE_MS + dist(pos) * k }));
+    const end = t0 + Math.max(DEATH_FACE_MS, ...list.map((c) => c.at)) + CONVERT_FLASH_MS;
+    this.deaths.push({ victim, killer, head, cells: list, t0, end });
+    this.kick();
+  }
+
+  /** Milliseconds until running death animations finish (0 if none). */
+  busyFor(): number {
+    const end = Math.max(0, ...this.deaths.map((d) => d.end));
+    return Math.max(0, end - performance.now());
+  }
+
   private kick(): void {
     if (this.raf) return;
     const tick = () => {
       this.raf = 0;
       if (this.last) this.draw(this.last.s, this.last.o);
-      if (this.effects.length) this.raf = requestAnimationFrame(tick);
+      if (this.effects.length || this.deaths.length) this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
   }
@@ -144,15 +181,91 @@ export class BoardRenderer {
         g.stroke();
       }
 
+    const now = performance.now();
+
+    // Deaths in progress: cells not yet reached still show the victim's pattern.
+    this.deaths = this.deaths.filter((d) => now < d.end);
+    for (const d of this.deaths) {
+      const t = now - d.t0;
+      for (const { pos, at } of d.cells) {
+        const x = pos.c * cs;
+        const y = pos.r * cs;
+        if (t < at) {
+          g.fillStyle = this.pattern(d.victim);
+          g.fillRect(x, y, cs, cs);
+          g.strokeStyle = PLAYER_STYLES[d.victim]!.edge;
+          g.lineWidth = Math.max(1, cs / 12);
+          g.strokeRect(x + 0.5, y + 0.5, cs - 1, cs - 1);
+        } else if (t < at + CONVERT_FLASH_MS) {
+          g.fillStyle = `rgba(255,255,255,${0.85 * (1 - (t - at) / CONVERT_FLASH_MS)})`;
+          g.fillRect(x, y, cs, cs);
+        }
+      }
+    }
+
+    // Cell grid drawn over fungus too, so you can count cells inside a blob (helps aim bites).
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(0,0,0,0.22)';
+    g.beginPath();
+    for (let r = 0; r < n; r++)
+      for (let c = 0; c < n; c++) {
+        if (!s.cells[r * n + c]) continue;
+        g.rect(c * cs + 0.5, r * cs + 0.5, cs - 1, cs - 1);
+      }
+    g.stroke();
+
     // Heads.
     s.players.forEach((p, i) => {
-      if (p.alive) drawFace(g, p.head.c * cs, p.head.r * cs, cs, PLAYER_STYLES[i]!, i === s.current);
+      if (p.alive) drawFace(g, p.head.c * cs, p.head.r * cs, cs, PLAYER_STYLES[i]!, i === s.current ? 'active' : 'idle');
     });
 
-    // Bite-start hints.
+    // Dying heads: X-eyes that pop, wobble and fade, with a shockwave ring.
+    for (const d of this.deaths) {
+      const t = now - d.t0;
+      const st = PLAYER_STYLES[d.victim]!;
+      const cx = d.head.c * cs + cs / 2;
+      const cy = d.head.r * cs + cs / 2;
+      const ring = Math.min(1, t / (DEATH_FACE_MS + 300));
+      if (ring < 1) {
+        g.strokeStyle = st.edge;
+        g.globalAlpha = 1 - ring;
+        g.lineWidth = Math.max(2, cs / 6) * (1 - ring) + 1;
+        g.beginPath();
+        g.arc(cx, cy, cs * (0.6 + ring * 4), 0, Math.PI * 2);
+        g.stroke();
+        g.globalAlpha = 1;
+      }
+      const faceT = t / (DEATH_FACE_MS + 400);
+      if (faceT < 1) {
+        const pop = faceT < 0.2 ? 1 + faceT * 2.5 : 1.5 - (faceT - 0.2) * 0.9;
+        const size = cs * pop;
+        g.save();
+        g.globalAlpha = faceT < 0.6 ? 1 : 1 - (faceT - 0.6) / 0.4;
+        g.translate(cx, cy);
+        g.rotate(Math.sin(t / 45) * 0.18 * (1 - faceT));
+        drawFace(g, -size / 2, -size / 2, size, st, 'dead');
+        g.restore();
+      }
+    }
+
+    // Bite-start hints: clear white-and-black markers that read on any pattern.
     if (o.biteStarts) {
-      g.fillStyle = 'rgba(0,0,0,0.18)';
-      for (const q of o.biteStarts) g.fillRect(q.c * cs + cs * 0.3, q.r * cs + cs * 0.3, cs * 0.4, cs * 0.4);
+      const m = Math.max(2, cs * 0.18);
+      for (const q of o.biteStarts) {
+        const x = q.c * cs;
+        const y = q.r * cs;
+        g.lineWidth = Math.max(2, cs / 9);
+        g.strokeStyle = '#fff';
+        g.strokeRect(x + m, y + m, cs - 2 * m, cs - 2 * m);
+        g.lineWidth = Math.max(1, cs / 20);
+        g.strokeStyle = '#000';
+        g.strokeRect(x + m, y + m, cs - 2 * m, cs - 2 * m);
+      }
+    }
+    if (o.biteHover && !o.bite) {
+      const q = o.biteHover;
+      g.fillStyle = 'rgba(255,255,255,0.55)';
+      g.fillRect(q.c * cs, q.r * cs, cs, cs);
     }
 
     // Ghost piece.
@@ -185,7 +298,6 @@ export class BoardRenderer {
     }
 
     // Effects.
-    const now = performance.now();
     this.effects = this.effects.filter((e) => now - e.t0 < EFFECT_MS);
     for (const e of this.effects) {
       const t = (now - e.t0) / EFFECT_MS;

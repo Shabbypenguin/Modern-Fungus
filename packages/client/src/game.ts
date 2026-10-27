@@ -17,6 +17,7 @@ import type { Overlay } from './render';
 import { sfx } from './sound';
 import { recordResult } from './storage';
 import { PLAYER_STYLES, drawFace, makeTile, TILE } from './textures';
+import { changeZoom } from './zoom';
 
 const CPU_THINK_MS = 450;
 const CPU_STEP_MS = 280;
@@ -81,12 +82,12 @@ export class GameScreen {
         h('div', { class: 'card-text' }, h('div', { class: 'card-name' }, p.name), h('div', { class: 'card-bites' })),
       ),
     );
-    this.preview = h('canvas', { class: 'preview', width: 96, height: 96, 'aria-label': 'Your piece' });
+    this.preview = h('canvas', { class: 'preview', 'aria-label': 'Your piece' });
     this.status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
     this.timerBar = h('div', { class: 'timer-fill' });
 
     const mk = (key: string, label: string, title: string, fn: () => void) =>
-      (this.btn[key] = h('button', { type: 'button', title, onclick: fn }, label));
+      (this.btn[key] = h('button', { type: 'button', title, class: `${key}-btn`, onclick: fn }, label));
 
     this.dialog = h('div', { class: 'dialog', hidden: true });
 
@@ -119,6 +120,9 @@ export class GameScreen {
             mk('exit', 'Exit', 'Leave this game', () => this.confirmExit()),
           ),
           this.status,
+          matchMedia('(hover: hover)').matches
+            ? h('p', { class: 'hint' }, 'Mouse wheel zooms. Shift + wheel rotates your piece.')
+            : null,
         ),
       ),
       this.dialog,
@@ -143,11 +147,12 @@ export class GameScreen {
   // ------------------------------------------------------------ helpers
 
   private swatch(i: number): HTMLCanvasElement {
-    const cv = h('canvas', { class: 'swatch', width: 40, height: 40 });
+    const S = 96; // drawn large, shown at 2.2rem, so it stays sharp at any zoom
+    const cv = h('canvas', { class: 'swatch', width: S, height: S });
     const g = cv.getContext('2d')!;
-    g.fillStyle = g.createPattern(makeTile(PLAYER_STYLES[i]!, i, 40 / TILE), 'repeat')!;
-    g.fillRect(0, 0, 40, 40);
-    drawFace(g, 8, 8, 24, PLAYER_STYLES[i]!, true);
+    g.fillStyle = g.createPattern(makeTile(PLAYER_STYLES[i]!, i, S / TILE), 'repeat')!;
+    g.fillRect(0, 0, S, S);
+    drawFace(g, S * 0.2, S * 0.2, S * 0.6, PLAYER_STYLES[i]!, true);
     return cv;
   }
 
@@ -184,8 +189,10 @@ export class GameScreen {
       const starts: Pos[] = [];
       for (let r = 0; r < this.s.size; r++)
         for (let c = 0; c < this.s.size; c++) if (checkBite(this.s, this.me, [{ r, c }]) === null) starts.push({ r, c });
+      const hov = this.hover;
       return {
         biteStarts: starts,
+        biteHover: hov && checkBite(this.s, this.me, [hov]) === null ? hov : undefined,
         bite: this.bite ? { cells: this.bite.cells, valid: checkBite(this.s, this.me, this.bite.cells) === null } : undefined,
       };
     }
@@ -202,8 +209,13 @@ export class GameScreen {
   }
 
   private drawPreview(): void {
+    const css = this.preview.clientWidth || 96;
+    const W = Math.round(css * Math.min(3, window.devicePixelRatio || 1));
+    if (this.preview.width !== W) {
+      this.preview.width = W;
+      this.preview.height = W;
+    }
     const g = this.preview.getContext('2d')!;
-    const W = this.preview.width;
     g.clearRect(0, 0, W, W);
     const showing = this.s.winner === null && this.s.players[this.me]!.kind === 'human';
     if (!showing) return;
@@ -246,6 +258,17 @@ export class GameScreen {
 
   private beginTurn(): void {
     clearInterval(this.timerHandle);
+    // Let a death play out before anyone moves again.
+    const wait = this.renderer.busyFor();
+    if (wait > 0) {
+      this.busy = true;
+      this.redraw();
+      this.cpuTimer = window.setTimeout(() => {
+        this.busy = false;
+        this.beginTurn();
+      }, wait + 60);
+      return;
+    }
     this.mode = 'place';
     this.bite = null;
     this.rotation = 0;
@@ -324,7 +347,15 @@ export class GameScreen {
     const died: Pos[] = [];
     const bitten: Pos[] = [];
     let placed = false;
+    const victims = new Set(events.flatMap((e) => (e.type === 'killed' ? [e.victim] : [])));
     for (const e of events) {
+      if (e.type === 'killed') {
+        const cells = events.flatMap((x) => (x.type === 'captured' && x.from === e.victim ? [x.pos] : []));
+        this.renderer.addDeath(e.victim, e.player, this.s.players[e.victim]!.head, cells);
+      }
+    }
+    for (const e of events) {
+      if (e.type === 'captured' && victims.has(e.from)) continue; // shown by the death animation
       if (e.type === 'captured') captured.push(e.pos);
       else if (e.type === 'died') died.push(e.pos);
       else if (e.type === 'bitten') bitten.push(e.pos);
@@ -418,25 +449,31 @@ export class GameScreen {
       e.preventDefault();
       this.rotate(1);
     });
-    cv.addEventListener(
+    this.root.addEventListener(
       'wheel',
       (e) => {
-        if (!this.isHumanTurn) return;
+        if (e.ctrlKey) return; // leave browser zoom alone
+        // Some browsers turn Shift + wheel into horizontal scrolling.
+        const d = e.deltaY || e.deltaX;
+        if (!d) return;
         e.preventDefault();
-        this.rotate(e.deltaY > 0 ? 1 : -1);
+        if (e.shiftKey) {
+          if (this.isHumanTurn) this.rotate(d > 0 ? 1 : -1);
+        } else changeZoom(d > 0 ? -1 : 1);
       },
       { passive: false },
     );
     cv.addEventListener('pointermove', (e) => {
       if (this.mode === 'bite') {
         if (this.bite) this.extendBite(e);
+        else if (e.pointerType !== 'touch') this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
         return;
       }
       if (e.pointerType === 'touch' && e.buttons === 0) return;
       this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
     });
     cv.addEventListener('pointerleave', (e) => {
-      if (e.pointerType !== 'touch' && this.mode === 'place') this.setHover(null);
+      if (e.pointerType !== 'touch') this.setHover(null);
     });
     cv.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !this.isHumanTurn || this.paused || this.busy) return;

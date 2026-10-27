@@ -4,6 +4,7 @@ import { h, titlebar } from './dom';
 import { GameScreen } from './game';
 import { setSound } from './sound';
 import { load, save } from './storage';
+import { initZoom } from './zoom';
 import type { Saved, Seat } from './storage';
 import { PLAYER_STYLES, TILE, drawFace, makeTile } from './textures';
 
@@ -17,7 +18,7 @@ const KIND_LABEL: Record<Seat['kind'], string> = {
   none: 'None',
 };
 
-function swatch(i: number, size = 44): HTMLCanvasElement {
+function swatch(i: number, size = 96): HTMLCanvasElement {
   const cv = h('canvas', { class: 'swatch', width: size, height: size, 'aria-hidden': 'true' });
   const g = cv.getContext('2d')!;
   g.fillStyle = g.createPattern(makeTile(PLAYER_STYLES[i]!, i, size / TILE), 'repeat')!;
@@ -165,7 +166,8 @@ function showGame(players: PlayerConfig[], timeLimit: number | null, seats: numb
     timeLimit,
     onExit: () => {
       restoreStyles();
-      showSetup();
+      initZoom();
+showSetup();
     },
   });
   app.replaceChildren(current.root);
@@ -194,7 +196,7 @@ function showHelp(): void {
         { class: 'help-body' },
         h('p', {}, 'One night in the lab, after the biologists have gone home, an experiment takes on a life of its own. Be the last fungus alive.'),
         h('h3', {}, 'Grow'),
-        h('p', {}, 'Each turn you get a piece. Rotate it with Space, the arrow keys, right-click or the mouse wheel, then place it touching your fungus along an edge.'),
+        h('p', {}, 'Each turn you get a piece. Rotate it with Space, the arrow keys, right-click or Shift + mouse wheel, then place it touching your fungus along an edge.'),
         h('h3', {}, 'Capture'),
         h('p', {}, 'Trap enemy fungus in a straight line between your own cells — across, down or diagonally — and it becomes yours. Captures can chain. Capture an enemy’s head and their whole fungus is yours, bites included.'),
         h('h3', {}, 'Stay connected'),
@@ -204,6 +206,7 @@ function showHelp(): void {
         h('p', {}, 'Teeth wait in the corners, and every so often everyone grows a new one. At 80 cells your bites become big bites (2 long); at 160, monster bites (3 long).'),
         h('h3', {}, 'Keys'),
         h('p', {}, 'B to bite, G to give up your turn, P to pause, Esc to cancel a bite.'),
+        h('p', {}, 'Mouse wheel zooms the interface; + and − do too, and 0 resets it.'),
       ),
       h('div', { class: 'dialog-actions' }, h('button', { type: 'button', class: 'default', onclick: close }, 'Got it')),
     ),
@@ -213,4 +216,5 @@ function showHelp(): void {
   (dlg.querySelector('button') as HTMLButtonElement).focus();
 }
 
+initZoom();
 showSetup();
