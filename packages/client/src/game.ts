@@ -2,25 +2,30 @@ import {
   SHAPES,
   applyAction,
   biteLevel,
+  biteStarts,
   checkBite,
   checkPlacement,
-  classicConfig,
   classicCpuTurn,
   createGame,
   hasAnyMove,
   shapeCells,
 } from '@fungus/engine';
-import type { Action, GameEvent, GameState, PlayerConfig, Pos } from '@fungus/engine';
+import type { Action, GameConfig, GameEvent, GameState, Pos } from '@fungus/engine';
+import { controlsDialog } from './controls';
 import { h, titlebar } from './dom';
 import { BoardRenderer } from './render';
 import type { Overlay } from './render';
 import { sfx } from './sound';
 import { recordResult } from './storage';
 import { PLAYER_STYLES, drawFace, makeTile, TILE } from './textures';
-import { changeZoom } from './zoom';
 
 const CPU_THINK_MS = 450;
 const CPU_STEP_MS = 280;
+/** Pointer travel (px) below which a press counts as a click/tap, not a drag. */
+const CLICK_SLOP = 6;
+/** On boards bigger than this, start zoomed in on your fungus instead of showing everything. */
+const START_ZOOMED_ABOVE = 35;
+const COMFORT_ACROSS = 30;
 
 const ERRORS: Record<string, string> = {
   'must touch your fungus (edge to edge)': 'Pieces must touch your fungus along an edge.',
@@ -28,7 +33,7 @@ const ERRORS: Record<string, string> = {
   'off board': 'That piece would hang off the board.',
   'bite must start next to your fungus': 'Start a bite right next to your fungus.',
   'heads cannot be bitten': 'Heads can’t be bitten — surround them instead.',
-  'no bites': 'You have no bites yet. Grab a corner tooth or wait for teeth to grow.',
+  'no bites': 'You have no bites yet. Grab a tooth or wait for teeth to grow.',
   'bite too long for your size': 'Grow bigger for longer bites.',
   'can only bite enemy fungus': 'Bite enemy fungus, not empty space.',
   'cannot bite yourself': 'That’s your own fungus.',
@@ -38,9 +43,20 @@ const ERRORS: Record<string, string> = {
 const biteWord = (level: number) => (level >= 3 ? 'Monster bites' : level === 2 ? 'Big bites' : 'Bites');
 
 export interface GameOptions {
-  players: PlayerConfig[];
-  timeLimit: number | null;
+  config: GameConfig;
   onExit: () => void;
+}
+
+interface Press {
+  id: number;
+  button: number;
+  x: number;
+  y: number;
+  lastX: number;
+  lastY: number;
+  moved: boolean;
+  /** What this press is doing once it moves. */
+  role: 'pan' | 'bite' | 'aim';
 }
 
 export class GameScreen {
@@ -52,6 +68,7 @@ export class GameScreen {
   private hover: Pos | null = null;
   private mode: 'place' | 'bite' = 'place';
   private bite: { start: Pos; cells: Pos[] } | null = null;
+  private starts: { state: GameState; cells: Pos[] } | null = null;
   private touchAim: string | null = null;
   private paused = false;
   private busy = false;
@@ -60,17 +77,21 @@ export class GameScreen {
   private timerHandle = 0;
   private cards: HTMLElement[] = [];
   private preview: HTMLCanvasElement;
+  private minimap: HTMLCanvasElement;
+  private miniBox: HTMLElement;
   private status: HTMLElement;
   private timerBar: HTMLElement;
   private btn: Record<string, HTMLButtonElement> = {};
   private dialog: HTMLElement;
   private resizeObs: ResizeObserver;
+  private presses = new Map<number, Press>();
+  private pinch: { dist: number; mx: number; my: number } | null = null;
+  private wheelRotate = 0;
 
   constructor(private opts: GameOptions) {
-    const cfg = classicConfig(opts.players, { turnTimeLimit: opts.timeLimit });
-    this.s = createGame(cfg, (Math.random() * 2 ** 32) >>> 0);
+    this.s = createGame(opts.config, (Math.random() * 2 ** 32) >>> 0);
 
-    this.canvas = h('canvas', { class: 'board', 'aria-label': 'Game board' });
+    this.canvas = h('canvas', { class: 'board', 'aria-label': 'Game board', tabindex: 0 });
     const boardWrap = h('div', { class: 'board-wrap' }, this.canvas);
     this.renderer = new BoardRenderer(this.canvas);
 
@@ -82,7 +103,15 @@ export class GameScreen {
         h('div', { class: 'card-text' }, h('div', { class: 'card-name' }, p.name), h('div', { class: 'card-bites' })),
       ),
     );
-    this.preview = h('canvas', { class: 'preview', 'aria-label': 'Your piece' });
+    this.preview = h('canvas', {
+      class: 'preview',
+      role: 'button',
+      tabindex: 0,
+      'aria-label': 'Your piece — click or tap to rotate',
+      title: 'Click or tap to rotate',
+    });
+    this.minimap = h('canvas', { class: 'minimap', 'aria-label': 'Whole board — click to move the view' });
+    this.miniBox = h('div', { class: 'mini-box', hidden: true }, this.minimap);
     this.status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
     this.timerBar = h('div', { class: 'timer-fill' });
 
@@ -102,37 +131,44 @@ export class GameScreen {
         h(
           'aside',
           { class: 'side' },
-          h('div', { class: 'cards' }, ...this.cards),
+          h('div', { class: `cards${this.s.players.length > 6 ? ' many' : ''}` }, ...this.cards),
           h(
             'div',
-            { class: 'piece-box' },
-            this.preview,
-            h('div', { class: 'timer', hidden: !opts.timeLimit }, this.timerBar),
+            { class: 'view-row' },
+            h(
+              'div',
+              { class: 'piece-box' },
+              this.preview,
+              h('div', { class: 'timer', hidden: !opts.config.turnTimeLimit }, this.timerBar),
+            ),
+            this.miniBox,
           ),
           h(
             'div',
             { class: 'controls' },
-            mk('rotate', 'Rotate', 'Rotate piece (Space / arrow keys / right-click)', () => this.rotate(1)),
+            mk('rotate', 'Rotate', 'Rotate piece (Q / E, Space, right-click)', () => this.rotate(1)),
             mk('place', 'Place', 'Place the piece where it’s aimed', () => this.placeAtHover()),
             mk('bite', 'Bite', 'Bite enemy fungus (B)', () => this.toggleBite()),
             mk('pass', 'Pass', 'Give up your turn (G)', () => this.humanAct({ type: 'pass' })),
+            mk('fit', 'Whole board', 'See the whole board (0)', () => this.renderer.fit()),
+            mk('mine', 'My fungus', 'Centre on your fungus (C)', () => this.centreOnMine()),
             mk('pause', 'Pause', 'Pause (P)', () => this.togglePause()),
+            mk('help', 'Controls', 'Show controls (?)', () => this.showControls()),
             mk('exit', 'Exit', 'Leave this game', () => this.confirmExit()),
           ),
           this.status,
-          matchMedia('(hover: hover)').matches
-            ? h('p', { class: 'hint' }, 'Mouse wheel zooms. Shift + wheel rotates your piece.')
-            : null,
         ),
       ),
       this.dialog,
     );
 
+    this.renderer.onFrame = () => this.drawMinimap();
     this.bindInput();
     this.resizeObs = new ResizeObserver(() => this.layout());
     this.resizeObs.observe(boardWrap);
     queueMicrotask(() => {
       this.layout();
+      this.initialCamera();
       this.beginTurn();
     });
   }
@@ -147,7 +183,7 @@ export class GameScreen {
   // ------------------------------------------------------------ helpers
 
   private swatch(i: number): HTMLCanvasElement {
-    const S = 96; // drawn large, shown at 2.2rem, so it stays sharp at any zoom
+    const S = 96; // drawn large, shown small, so it stays sharp at any size
     const cv = h('canvas', { class: 'swatch', width: S, height: S });
     const g = cv.getContext('2d')!;
     g.fillStyle = g.createPattern(makeTile(PLAYER_STYLES[i]!, i, S / TILE), 'repeat')!;
@@ -162,6 +198,9 @@ export class GameScreen {
   private get isHumanTurn(): boolean {
     return this.s.winner === null && this.s.players[this.me]!.kind === 'human';
   }
+  private get canAct(): boolean {
+    return this.isHumanTurn && !this.paused && !this.busy;
+  }
 
   private say(msg: string): void {
     this.status.textContent = msg;
@@ -170,6 +209,31 @@ export class GameScreen {
   private layout(): void {
     this.renderer.resize(this.s.size);
     this.redraw();
+  }
+
+  private initialCamera(): void {
+    if (this.s.size <= START_ZOOMED_ABOVE) return;
+    const firstHuman = this.s.players.findIndex((p) => p.kind === 'human');
+    const target = this.s.players[firstHuman >= 0 ? firstHuman : 0]!.head;
+    this.renderer.cam = { cx: target.c + 0.5, cy: target.r + 0.5, across: COMFORT_ACROSS };
+    this.renderer.resize(this.s.size); // re-clamps the camera
+  }
+
+  /** At the start of a human turn, bring their fungus into view if none of it is on screen. */
+  private followCurrent(): void {
+    const p = this.me;
+    const v = this.renderer.view();
+    const n = this.s.size;
+    for (let r = Math.max(0, Math.floor(v.r0)); r < Math.min(n, Math.ceil(v.r1)); r++)
+      for (let c = Math.max(0, Math.floor(v.c0)); c < Math.min(n, Math.ceil(v.c1)); c++)
+        if (this.s.cells[r * n + c] === p + 1) return;
+    this.renderer.centreOn(this.s.players[p]!.head, COMFORT_ACROSS);
+  }
+
+  private centreOnMine(): void {
+    const humanTurn = this.isHumanTurn;
+    const p = humanTurn ? this.me : Math.max(0, this.s.players.findIndex((pl) => pl.kind === 'human' && pl.alive));
+    this.renderer.centreOn(this.s.players[p]!.head, COMFORT_ACROSS);
   }
 
   /** Piece cells for the current rotation, anchored so the hovered cell sits on the piece's middle. */
@@ -183,16 +247,20 @@ export class GameScreen {
     return { cells: offs.map((o) => ({ r: r + o.r, c: c + o.c })), r, c };
   }
 
+  /** Bite starts, computed once per state (cheap to reuse every frame). */
+  private biteStartCells(): Pos[] {
+    if (this.starts?.state !== this.s) this.starts = { state: this.s, cells: biteStarts(this.s, this.me) };
+    return this.starts.cells;
+  }
+
   private overlay(): Overlay {
-    if (!this.isHumanTurn || this.paused || this.busy) return {};
+    if (!this.canAct) return {};
     if (this.mode === 'bite') {
-      const starts: Pos[] = [];
-      for (let r = 0; r < this.s.size; r++)
-        for (let c = 0; c < this.s.size; c++) if (checkBite(this.s, this.me, [{ r, c }]) === null) starts.push({ r, c });
+      const starts = this.biteStartCells();
       const hov = this.hover;
       return {
         biteStarts: starts,
-        biteHover: hov && checkBite(this.s, this.me, [hov]) === null ? hov : undefined,
+        biteHover: hov && starts.some((q) => q.r === hov.r && q.c === hov.c) ? hov : undefined,
         bite: this.bite ? { cells: this.bite.cells, valid: checkBite(this.s, this.me, this.bite.cells) === null } : undefined,
       };
     }
@@ -208,6 +276,12 @@ export class GameScreen {
     this.updatePanel();
   }
 
+  private drawMinimap(): void {
+    const show = this.renderer.zoomedIn;
+    if (this.miniBox.hidden === show) this.miniBox.hidden = !show;
+    if (show) this.renderer.drawMinimap(this.minimap, this.s);
+  }
+
   private drawPreview(): void {
     const css = this.preview.clientWidth || 96;
     const W = Math.round(css * Math.min(3, window.devicePixelRatio || 1));
@@ -217,8 +291,7 @@ export class GameScreen {
     }
     const g = this.preview.getContext('2d')!;
     g.clearRect(0, 0, W, W);
-    const showing = this.s.winner === null && this.s.players[this.me]!.kind === 'human';
-    if (!showing) return;
+    if (!this.isHumanTurn) return;
     const offs = shapeCells(this.s.piece, this.rotation);
     const maxR = Math.max(...offs.map((o) => o.r)) + 1;
     const maxC = Math.max(...offs.map((o) => o.c)) + 1;
@@ -234,24 +307,30 @@ export class GameScreen {
     }
   }
 
+  private lastCurrent = -1;
+
   private updatePanel(): void {
+    if (this.lastCurrent !== this.me) {
+      this.lastCurrent = this.me;
+      // In a long (scrolling) player list, keep whoever's turn it is in view.
+      this.cards[this.me]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
     this.s.players.forEach((p, i) => {
       const card = this.cards[i]!;
       card.classList.toggle('current', i === this.me && this.s.winner === null);
       card.classList.toggle('dead', !p.alive);
-      const lv = biteLevel(this.s, i);
-      card.querySelector('.card-bites')!.textContent = p.alive
-        ? `${biteWord(lv)}: ${p.bites}`
-        : 'Eaten';
+      card.querySelector('.card-bites')!.textContent = p.alive ? `${biteWord(biteLevel(this.s, i))}: ${p.bites}` : 'Eaten';
     });
-    const human = this.isHumanTurn && !this.paused && !this.busy;
-    this.btn.rotate!.disabled = !human || this.mode === 'bite' || SHAPES[this.s.piece]!.masks.length === 1;
-    this.btn.place!.disabled = !human || this.mode === 'bite' || !this.hover;
-    this.btn.bite!.disabled = !human || this.s.players[this.me]!.bites < 1;
+    const act = this.canAct;
+    const rotates = SHAPES[this.s.piece]!.masks.length > 1;
+    this.btn.rotate!.disabled = !act || this.mode === 'bite' || !rotates;
+    this.btn.place!.disabled = !act || this.mode === 'bite' || !this.hover;
+    this.btn.bite!.disabled = !act || this.s.players[this.me]!.bites < 1;
     this.btn.bite!.setAttribute('aria-pressed', String(this.mode === 'bite'));
-    this.btn.pass!.disabled = !human;
+    this.btn.pass!.disabled = !act;
     this.btn.pause!.textContent = this.paused ? 'Resume' : 'Pause';
     this.btn.pause!.disabled = this.s.winner !== null;
+    this.preview.classList.toggle('can-rotate', act && this.mode === 'place' && rotates);
   }
 
   // ------------------------------------------------------------ turn flow
@@ -276,6 +355,7 @@ export class GameScreen {
     if (this.s.winner !== null) return this.gameOver();
     const p = this.s.players[this.me]!;
     if (p.kind === 'human') {
+      this.followCurrent();
       if (!hasAnyMove(this.s, this.me)) {
         this.say(`${p.name} has nowhere to grow and passes.`);
         this.busy = true;
@@ -315,6 +395,8 @@ export class GameScreen {
 
   private runCpu(): void {
     this.busy = true;
+    // Big CPU-only stretches would be slow at full pace; speed up when there are many seats.
+    const pace = this.s.players.length > 6 ? 0.4 : 1;
     const step = (queue: Action[]) => {
       if (this.paused) {
         this.cpuTimer = window.setTimeout(() => step(queue), 200);
@@ -335,9 +417,9 @@ export class GameScreen {
       if (endsTurn) {
         this.busy = false;
         this.beginTurn();
-      } else this.cpuTimer = window.setTimeout(() => step(queue), CPU_STEP_MS);
+      } else this.cpuTimer = window.setTimeout(() => step(queue), CPU_STEP_MS * pace);
     };
-    this.cpuTimer = window.setTimeout(() => step(classicCpuTurn(this.s)), CPU_THINK_MS);
+    this.cpuTimer = window.setTimeout(() => step(classicCpuTurn(this.s)), CPU_THINK_MS * pace);
   }
 
   /** Apply a validated result and play its effects. */
@@ -403,8 +485,7 @@ export class GameScreen {
   }
 
   private humanAct(a: Action): void {
-    if (!this.isHumanTurn || this.paused || this.busy) return;
-    this.commit(a);
+    if (this.canAct) this.commit(a);
   }
 
   private placeAtHover(): void {
@@ -414,7 +495,7 @@ export class GameScreen {
   }
 
   private rotate(dir: 1 | -1): void {
-    if (!this.isHumanTurn || this.mode === 'bite') return;
+    if (!this.canAct || this.mode === 'bite') return;
     const n = SHAPES[this.s.piece]!.masks.length;
     this.rotation = (this.rotation + dir + n) % n;
     this.touchAim = null;
@@ -422,14 +503,15 @@ export class GameScreen {
   }
 
   private toggleBite(): void {
-    if (!this.isHumanTurn || this.paused || this.busy) return;
+    if (!this.canAct) return;
     if (this.mode === 'place' && this.s.players[this.me]!.bites < 1) {
       this.say(ERRORS['no bites']!);
       return;
     }
     this.mode = this.mode === 'bite' ? 'place' : 'bite';
     this.bite = null;
-    this.say(this.mode === 'bite' ? 'Press on enemy fungus next to yours, then drag to bite.' : '');
+    if (this.mode === 'bite' && this.biteStartCells().length === 0) this.say('No enemy fungus is touching yours yet — nothing to bite.');
+    else this.say(this.mode === 'bite' ? 'Press on a marked enemy cell next to yours, then drag to bite.' : '');
     this.redraw();
   }
 
@@ -441,55 +523,111 @@ export class GameScreen {
     this.redraw();
   }
 
+  private showControls(): void {
+    const close = () => this.hideDialog();
+    this.dialog.replaceChildren(controlsDialog(close));
+    this.dialog.hidden = false;
+    (this.dialog.querySelector('button.default') as HTMLButtonElement | null)?.focus();
+  }
+
   // ------------------------------------------------------------ input
 
   private bindInput(): void {
     const cv = this.canvas;
-    cv.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      this.rotate(1);
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Firefox/Windows start page autoscroll on middle-click; we use middle-drag to pan.
+    cv.addEventListener('mousedown', (e) => {
+      if (e.button === 1) e.preventDefault();
     });
-    this.root.addEventListener(
+
+    // Wheel: zoom the board at the cursor. Shift + wheel: rotate.
+    cv.addEventListener(
       'wheel',
       (e) => {
-        if (e.ctrlKey) return; // leave browser zoom alone
+        if (e.ctrlKey) return; // leave browser zoom / trackpad pinch-zoom alone
+        e.preventDefault();
         // Some browsers turn Shift + wheel into horizontal scrolling.
         const d = e.deltaY || e.deltaX;
         if (!d) return;
-        e.preventDefault();
+        const px = e.deltaMode === 1 ? d * 33 : e.deltaMode === 2 ? d * 400 : d;
         if (e.shiftKey) {
-          if (this.isHumanTurn) this.rotate(d > 0 ? 1 : -1);
-        } else changeZoom(d > 0 ? -1 : 1);
+          // Accumulate so a trackpad's many small deltas don't spin the piece.
+          this.wheelRotate += px;
+          if (Math.abs(this.wheelRotate) >= 60) {
+            this.rotate(this.wheelRotate > 0 ? 1 : -1);
+            this.wheelRotate = 0;
+          }
+          return;
+        }
+        this.renderer.zoomAt(Math.exp(-Math.max(-300, Math.min(300, px)) * 0.0018), e.clientX, e.clientY);
+        this.refreshHover(e);
       },
       { passive: false },
     );
-    cv.addEventListener('pointermove', (e) => {
-      if (this.mode === 'bite') {
-        if (this.bite) this.extendBite(e);
-        else if (e.pointerType !== 'touch') this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
+
+    cv.addEventListener('pointerdown', (e) => {
+      cv.focus({ preventScroll: true });
+      const cell = this.renderer.cellAt(e.clientX, e.clientY, this.s.size);
+      const touch = e.pointerType === 'touch';
+      let role: Press['role'] = 'pan';
+      if (e.button === 0) {
+        if (this.mode === 'bite' && this.canAct && cell && this.biteStartCells().some((q) => q.r === cell.r && q.c === cell.c))
+          role = 'bite';
+        else role = touch ? 'pan' : 'aim';
+      }
+      this.presses.set(e.pointerId, { id: e.pointerId, button: e.button, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false, role });
+      cv.setPointerCapture(e.pointerId);
+      if (this.presses.size === 2) {
+        // Second finger: switch to pinch; cancel any bite or tap in progress.
+        this.bite = null;
+        this.startPinch();
         return;
       }
-      if (e.pointerType === 'touch' && e.buttons === 0) return;
-      this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
-    });
-    cv.addEventListener('pointerleave', (e) => {
-      if (e.pointerType !== 'touch') this.setHover(null);
-    });
-    cv.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || !this.isHumanTurn || this.paused || this.busy) return;
-      const cell = this.renderer.cellAt(e.clientX, e.clientY, this.s.size);
-      if (!cell) return;
-      cv.setPointerCapture(e.pointerId);
-      if (this.mode === 'bite') {
+      if (role === 'bite' && cell) {
         this.bite = { start: cell, cells: [cell] };
         this.redraw();
+      } else if (e.pointerType === 'mouse' && e.button === 0) this.setHover(cell);
+    });
+
+    cv.addEventListener('pointermove', (e) => {
+      const press = this.presses.get(e.pointerId);
+      if (!press) {
+        // Plain mouse hover.
+        if (e.pointerType !== 'touch') this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
         return;
       }
-      this.setHover(cell);
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP) press.moved = true;
+      if (this.pinch && this.presses.size >= 2) {
+        press.lastX = e.clientX;
+        press.lastY = e.clientY;
+        this.updatePinch();
+        return;
+      }
+      if (press.role === 'bite') this.extendBite(e);
+      else if (press.role === 'pan' && press.moved) {
+        this.renderer.panBy(e.clientX - press.lastX, e.clientY - press.lastY);
+        if (e.pointerType !== 'touch') this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
+      } else if (press.role === 'aim') this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size));
+      press.lastX = e.clientX;
+      press.lastY = e.clientY;
     });
-    cv.addEventListener('pointerup', (e) => {
-      if (e.button !== 0 || !this.isHumanTurn || this.paused || this.busy) return;
-      if (this.mode === 'bite') {
+
+    const end = (e: PointerEvent, cancelled: boolean) => {
+      const press = this.presses.get(e.pointerId);
+      if (!press) return;
+      this.presses.delete(e.pointerId);
+      if (this.pinch) {
+        if (this.presses.size < 2) this.pinch = null;
+        // Remaining finger keeps panning without jumping.
+        for (const p of this.presses.values()) {
+          p.moved = true;
+          p.role = 'pan';
+        }
+        return;
+      }
+      if (cancelled) return;
+      const cell = this.renderer.cellAt(e.clientX, e.clientY, this.s.size);
+      if (press.role === 'bite') {
         if (this.bite) {
           const cells = this.bite.cells;
           this.bite = null;
@@ -497,8 +635,10 @@ export class GameScreen {
         }
         return;
       }
-      const cell = this.renderer.cellAt(e.clientX, e.clientY, this.s.size);
-      if (!cell) return;
+      if (press.moved) return; // it was a pan
+      // A click / tap.
+      if (press.button === 2) return this.rotate(1); // right-click rotates
+      if (press.button !== 0 || !cell || !this.canAct || this.mode === 'bite') return;
       this.setHover(cell);
       if (e.pointerType === 'touch') {
         // Touch: first tap aims, second tap on the same spot confirms.
@@ -509,25 +649,122 @@ export class GameScreen {
           this.say('Tap again (or press Place) to grow here.');
         }
       } else this.placeAtHover();
+    };
+    cv.addEventListener('pointerup', (e) => end(e, false));
+    cv.addEventListener('pointercancel', (e) => end(e, true));
+    cv.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse' && !this.presses.size) this.setHover(null);
     });
+
+    // Click / tap the piece preview to rotate.
+    this.preview.addEventListener('click', () => this.rotate(1));
+    this.preview.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.rotate(1);
+      }
+    });
+
+    // Minimap: click or drag to move the view.
+    const jump = (e: PointerEvent) => {
+      const rect = this.minimap.getBoundingClientRect();
+      const n = this.s.size;
+      this.renderer.glideTo({ cx: ((e.clientX - rect.left) / rect.width) * n, cy: ((e.clientY - rect.top) / rect.height) * n });
+    };
+    this.minimap.addEventListener('pointerdown', (e) => {
+      this.minimap.setPointerCapture(e.pointerId);
+      jump(e);
+    });
+    this.minimap.addEventListener('pointermove', (e) => {
+      if (e.buttons) jump(e);
+    });
+
     window.addEventListener('keydown', this.onKey);
   }
 
+  private startPinch(): void {
+    const [a, b] = [...this.presses.values()];
+    if (!a || !b) return;
+    this.pinch = { dist: Math.hypot(a.lastX - b.lastX, a.lastY - b.lastY), mx: (a.lastX + b.lastX) / 2, my: (a.lastY + b.lastY) / 2 };
+    this.touchAim = null;
+  }
+
+  private updatePinch(): void {
+    const [a, b] = [...this.presses.values()];
+    if (!a || !b || !this.pinch) return;
+    const dist = Math.hypot(a.lastX - b.lastX, a.lastY - b.lastY);
+    const mx = (a.lastX + b.lastX) / 2;
+    const my = (a.lastY + b.lastY) / 2;
+    this.renderer.panBy(mx - this.pinch.mx, my - this.pinch.my);
+    if (this.pinch.dist > 0) this.renderer.zoomAt(dist / this.pinch.dist, mx, my);
+    this.pinch = { dist, mx, my };
+  }
+
+  private refreshHover(e: { clientX: number; clientY: number }): void {
+    this.setHover(this.renderer.cellAt(e.clientX, e.clientY, this.s.size), true);
+  }
+
   private onKey = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement || !this.dialog.hidden) return;
+    if (e.target instanceof HTMLInputElement || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!this.dialog.hidden) {
+      if (e.key === 'Escape') this.hideDialogIfControls();
+      return;
+    }
     const k = e.key.toLowerCase();
-    if (k === ' ' || k === 'arrowright' || k === 'arrowup') (e.preventDefault(), this.rotate(1));
-    else if (k === 'arrowleft' || k === 'arrowdown') (e.preventDefault(), this.rotate(-1));
-    else if (k === 'b') this.toggleBite();
-    else if (k === 'g') this.humanAct({ type: 'pass' });
-    else if (k === 'p') this.togglePause();
-    else if (k === 'escape' && this.mode === 'bite') this.toggleBite();
-    else if (k === 'enter') this.placeAtHover();
+    const r = this.renderer;
+    switch (k) {
+      case 'w':
+        return r.panView(0, -0.25);
+      case 's':
+        return r.panView(0, 0.25);
+      case 'a':
+        return r.panView(-0.25, 0);
+      case 'd':
+        return r.panView(0.25, 0);
+      case 'q':
+        return this.rotate(-1);
+      case 'e':
+        return this.rotate(1);
+      case ' ':
+      case 'arrowright':
+      case 'arrowup':
+        e.preventDefault();
+        return this.rotate(1);
+      case 'arrowleft':
+      case 'arrowdown':
+        e.preventDefault();
+        return this.rotate(-1);
+      case '+':
+      case '=':
+        return r.glideTo({ across: r.cam.across / 1.35 });
+      case '-':
+      case '_':
+        return r.glideTo({ across: r.cam.across * 1.35 });
+      case '0':
+        return r.fit();
+      case 'c':
+        return this.centreOnMine();
+      case 'b':
+        return this.toggleBite();
+      case 'g':
+        return this.humanAct({ type: 'pass' });
+      case 'p':
+        return this.togglePause();
+      case '?':
+      case '/':
+        return this.showControls();
+      case 'escape':
+        if (this.mode === 'bite') this.toggleBite();
+        return;
+      case 'enter':
+        return this.placeAtHover();
+    }
   };
 
-  private setHover(cell: Pos | null): void {
+  private setHover(cell: Pos | null, force = false): void {
     const same = cell && this.hover && cell.r === this.hover.r && cell.c === this.hover.c;
-    if (same || (!cell && !this.hover)) return;
+    if (!force && (same || (!cell && !this.hover))) return;
     this.hover = cell;
     this.redraw();
   }
@@ -550,7 +787,8 @@ export class GameScreen {
       if (i > 0 && checkBite(this.s, this.me, [...cells, q]) !== null) break;
       cells.push(q);
     }
-    if (cells.length !== this.bite.cells.length || cells.some((q, i) => q.r !== this.bite!.cells[i]!.r || q.c !== this.bite!.cells[i]!.c)) {
+    const prev = this.bite.cells;
+    if (cells.length !== prev.length || cells.some((q, i) => q.r !== prev[i]!.r || q.c !== prev[i]!.c)) {
       this.bite.cells = cells;
       this.redraw();
     }
@@ -568,20 +806,18 @@ export class GameScreen {
     );
     this.say(`${w.name} wins.`);
     this.redraw();
-    this.showDialog(
-      `${w.name}’s fungus wins`,
-      this.s.players.length > 1 ? `${this.s.round} rounds of growth.` : '',
-      [
-        ['Play again', () => this.restart()],
-        ['Back to setup', () => this.opts.onExit()],
-      ],
-    );
+    this.showDialog(`${w.name}’s fungus wins`, `${this.s.round} rounds of growth.`, [
+      ['Play again', () => this.restart()],
+      ['Back to setup', () => this.opts.onExit()],
+    ]);
   }
 
   private restart(): void {
     this.hideDialog();
-    const cfg = classicConfig(this.opts.players, { turnTimeLimit: this.opts.timeLimit });
-    this.s = createGame(cfg, (Math.random() * 2 ** 32) >>> 0);
+    this.s = createGame(this.opts.config, (Math.random() * 2 ** 32) >>> 0);
+    this.renderer.resize(this.s.size);
+    this.renderer.cam = { cx: this.s.size / 2, cy: this.s.size / 2, across: this.s.size };
+    this.initialCamera();
     this.beginTurn();
   }
 
@@ -615,8 +851,13 @@ export class GameScreen {
     (this.dialog.querySelector('button') as HTMLButtonElement | null)?.focus();
   }
 
+  private hideDialogIfControls(): void {
+    if (this.dialog.querySelector('.controls-dialog')) this.hideDialog();
+  }
+
   private hideDialog(): void {
     this.dialog.hidden = true;
     this.dialog.replaceChildren();
+    this.canvas.focus({ preventScroll: true });
   }
 }

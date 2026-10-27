@@ -150,7 +150,8 @@ export function legalPlacements(s: GameState, p: number): { rotation: number; r:
 export function checkBite(s: GameState, p: number, cells: Pos[]): string | null {
   if (s.players[p]!.bites < 1) return 'no bites';
   if (cells.length < 1) return 'empty bite';
-  if (cells.length > biteLevel(s, p)) return 'bite too long for your size';
+  // A single cell is always within level (≥1); only count cells for longer bites.
+  if (cells.length > 1 && cells.length > biteLevel(s, p)) return 'bite too long for your size';
   const first = cells[0]!;
   if (!inBounds(s, first.r, first.c) || !touchesOwn(s, p, first.r, first.c)) return 'bite must start next to your fungus';
   let dir: Pos | null = null;
@@ -190,14 +191,36 @@ export function checkGrow(s: GameState, p: number, cells: Pos[]): string | null 
   return null;
 }
 
+/** Cells where p could start a bite right now (enemy body next to p's fungus). */
+export function biteStarts(s: GameState, p: number): Pos[] {
+  if (s.players[p]!.bites < 1) return [];
+  const out: Pos[] = [];
+  for (let r = 0; r < s.size; r++)
+    for (let c = 0; c < s.size; c++) {
+      const v = s.cells[r * s.size + c]!;
+      if (v && v !== p + 1 && touchesOwn(s, p, r, c) && !isHead(s, r, c)) out.push({ r, c });
+    }
+  return out;
+}
+
+/** True if any placement of the current piece is legal (stops at the first one). */
+export function hasAnyPlacement(s: GameState, p: number): boolean {
+  const rots = SHAPES[s.piece]!.masks.length;
+  // Only anchors near own cells can touch them: scan own cells' neighbourhoods.
+  for (let k = 0; k < s.cells.length; k++) {
+    if (s.cells[k] !== p + 1) continue;
+    const r0 = Math.floor(k / s.size);
+    const c0 = k % s.size;
+    for (let rot = 0; rot < rots; rot++)
+      for (let r = r0 - 4; r <= r0 + 1; r++)
+        for (let c = c0 - 4; c <= c0 + 1; c++) if (typeof checkPlacement(s, p, rot, r, c) !== 'string') return true;
+  }
+  return false;
+}
+
 /** True if the player can do anything except pass. */
 export function hasAnyMove(s: GameState, p: number): boolean {
-  if (legalPlacements(s, p).length > 0) return true;
-  const pl = s.players[p]!;
-  if (pl.bites < 1) return false;
-  for (let r = 0; r < s.size; r++)
-    for (let c = 0; c < s.size; c++) if (checkBite(s, p, [{ r, c }]) === null) return true;
-  return false;
+  return hasAnyPlacement(s, p) || biteStarts(s, p).length > 0;
 }
 
 // ---------------------------------------------------------------- mutation
@@ -208,10 +231,29 @@ class Ctx {
   flags: number[];
   rng: Rng;
   levels: number[];
+  /** Live cell count per player, so level checks stay O(1) on 100×100 boards. */
+  counts: number[];
   constructor(public s: GameState) {
     this.flags = s.players.map(() => 0);
     this.rng = new Rng(s.rngSeed);
-    this.levels = s.players.map((_, i) => biteLevel(s, i));
+    this.counts = s.players.map(() => 0);
+    for (const v of s.cells) if (v) this.counts[v - 1]!++;
+    this.levels = s.players.map((_, i) => this.level(i));
+  }
+
+  level(p: number): number {
+    const step = this.s.config.biteStep;
+    if (step <= 0) return 1;
+    return Math.min(this.s.config.maxBiteLevel, 1 + Math.floor(this.counts[p]! / step));
+  }
+
+  /** Every board write goes through here to keep counts exact. */
+  set(k: number, v: number): void {
+    const old = this.s.cells[k]!;
+    if (old === v) return;
+    if (old) this.counts[old - 1]!--;
+    if (v) this.counts[v - 1]!++;
+    this.s.cells[k] = v;
   }
 
   pos(k: number): Pos {
@@ -219,7 +261,7 @@ class Ctx {
   }
 
   noteLevel(p: number): void {
-    const lv = biteLevel(this.s, p);
+    const lv = this.level(p);
     if (lv !== this.levels[p]) {
       this.levels[p] = lv;
       this.events.push({ type: 'biteLevel', player: p, level: lv });
@@ -242,7 +284,7 @@ class Ctx {
       }
       this.events.push({ type: 'captured', player: p, from: o, pos: this.pos(k) });
     }
-    s.cells[k] = p + 1;
+    this.set(k, p + 1);
     this.captureFrom(k, p);
     this.noteLevel(p);
   }
@@ -272,7 +314,7 @@ class Ctx {
       this.claim(first, p);
       // A diagonal capture that isn't edge-connected to our head is destroyed (CODE 3 @ 0x0291E).
       if (diagonal && s.cells[first] === p + 1 && !connectedToHead(s, p).has(first)) {
-        s.cells[first] = 0;
+        this.set(first, 0);
         this.events.push({ type: 'died', player: p, pos: this.pos(first) });
         this.noteLevel(p);
       }
@@ -285,7 +327,7 @@ class Ctx {
     const keep = connectedToHead(s, p);
     for (let k = 0; k < s.cells.length; k++) {
       if (s.cells[k] === p + 1 && !keep.has(k)) {
-        s.cells[k] = 0;
+        this.set(k, 0);
         this.events.push({ type: 'died', player: p, pos: this.pos(k) });
       }
     }
@@ -330,7 +372,7 @@ class Ctx {
         s.players[p]!.bites += s.config.toothBites;
         this.events.push({ type: 'tooth', player: p, pos: this.pos(k) });
       }
-      s.cells[k] = p + 1;
+      this.set(k, p + 1);
     }
     for (const k of ks) if (s.cells[k] === p + 1) this.claim(k, p);
     this.resolve(p);
@@ -355,7 +397,7 @@ class Ctx {
       let best = -1;
       let bestN = -1;
       s.players.forEach((pl, i) => {
-        const n = pl.alive ? cellCount(s, i) : -1;
+        const n = pl.alive ? this.counts[i]! : -1;
         if (n > bestN) {
           best = i;
           bestN = n;
@@ -417,7 +459,7 @@ export function applyAction(state: GameState, p: number, action: Action): Action
         const k = idx(s, q.r, q.c);
         const o = s.cells[k]! - 1;
         ctx.flags[o] = Math.max(ctx.flags[o]!, 1);
-        s.cells[k] = 0;
+        ctx.set(k, 0);
         ctx.events.push({ type: 'bitten', player: p, victim: o, pos: { ...q } });
       }
       s.players[p]!.bites--;

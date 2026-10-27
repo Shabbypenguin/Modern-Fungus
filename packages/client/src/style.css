@@ -367,6 +367,7 @@ input[type='checkbox'] {
 
 .options .sound {
   margin-left: auto;
+  margin-right: 1rem;
 }
 
 .setup .status {
@@ -377,6 +378,84 @@ input[type='checkbox'] {
   margin-top: -1rem; /* collapse the grid gap while there's no message */
 }
 
+/* ---------- setup: rules, board, seat list ---------- */
+
+.field h2 {
+  margin: 0 0 0.35rem;
+  font-size: var(--step-1);
+}
+
+.note {
+  margin: 0.35rem 0 0;
+  font-size: var(--step--1);
+}
+
+.seg label.disabled span {
+  color: #9a9a9a;
+  background: repeating-linear-gradient(45deg, transparent 0 4px, rgba(0, 0, 0, 0.05) 4px 8px);
+  cursor: not-allowed;
+}
+
+.seg label.disabled input {
+  cursor: not-allowed;
+}
+
+select {
+  font: inherit;
+  font-size: var(--step-0);
+  border: 1px solid var(--ink);
+  background: var(--platinum-hi);
+  min-height: 2.1rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.seat-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 0.5rem;
+}
+
+.seat-row {
+  margin: 0;
+  min-width: 0;
+  border: 0.18rem solid var(--edge);
+  background: var(--platinum-hi);
+  padding: 0.4rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'sw name rm' 'seg seg seg';
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+}
+
+.seat-row .swatch {
+  grid-area: sw;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--ink);
+}
+
+.seat-row input[type='text'] {
+  grid-area: name;
+  width: 100%;
+  min-width: 0;
+}
+
+.seat-row .remove {
+  grid-area: rm;
+  min-height: 2rem;
+  width: 2rem;
+  padding: 0;
+  font-size: var(--step-1);
+  line-height: 1;
+}
+
+.add-player {
+  min-height: 3.2rem;
+  border-style: dashed;
+}
+
+/* ---------- setup actions ---------- */
 .setup-actions {
   display: flex;
   justify-content: flex-end;
@@ -445,11 +524,33 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
+}
+
+.side > * {
+  flex: none;
+}
+
+/* The player list is the part that gives way: it scrolls so the buttons never leave the screen. */
+.side > .cards {
+  flex: 0 1 auto;
+  min-height: 4rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .cards {
   display: grid;
+  align-content: start;
+  gap: 0.5rem;
+}
+
+/* Piece preview and minimap share a row when both are showing. */
+.view-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 0.5rem;
 }
 
@@ -540,6 +641,95 @@ input[type='checkbox'] {
   .controls .place-btn {
     display: none;
   }
+}
+
+/* Many players: two compact columns so 16 fit without scrolling. */
+.cards.many {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+
+.cards.many .card {
+  padding: 0.2rem 0.3rem;
+  gap: 0.35rem;
+}
+
+.cards.many .card .swatch {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.cards.many .card-name,
+.cards.many .card.current .card-name {
+  font-size: var(--step-0);
+}
+
+.cards.many .card-bites {
+  font-size: var(--step--1);
+}
+
+.preview.can-rotate {
+  cursor: pointer;
+}
+
+.preview:focus-visible {
+  outline-offset: 0.3rem;
+}
+
+.mini-box {
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+  padding: 0.3rem;
+  display: grid;
+  place-items: center;
+}
+
+.mini-box[hidden] {
+  display: none;
+}
+
+.minimap {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 6.5rem;
+  cursor: pointer;
+  touch-action: none;
+  image-rendering: pixelated;
+}
+
+/* ---------- controls table ---------- */
+
+.control-tables {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.control-tables h3 {
+  margin: 0.4rem 0 0.2rem;
+}
+
+.control-tables table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--platinum-hi);
+  border: 1px solid var(--ink);
+}
+
+.control-tables th,
+.control-tables td {
+  text-align: left;
+  padding: 0.2rem 0.5rem;
+  vertical-align: top;
+  border-bottom: 1px solid #d0d0d0;
+}
+
+.control-tables th {
+  width: 45%;
+  font-weight: 700;
+}
+
+.controls-dialog {
+  width: min(36rem, 100%);
 }
 
 .hint {
@@ -650,7 +840,7 @@ kbd {
     display: grid;
     overflow: visible;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'cards piece' 'controls controls' 'status status' 'hint hint';
+    grid-template-areas: 'cards view' 'controls controls' 'status status';
   }
   .cards {
     grid-area: cards;
@@ -668,9 +858,16 @@ kbd {
   .card.current .card-name {
     font-size: var(--step-1);
   }
-  .piece-box {
-    grid-area: piece;
+  .view-row {
+    grid-area: view;
     align-self: start;
+    grid-auto-flow: row;
+  }
+  .side > .cards {
+    max-height: 13rem;
+  }
+  .cards.many {
+    grid-template-columns: minmax(0, 1fr);
   }
   .preview {
     width: 4.5rem;
@@ -688,6 +885,60 @@ kbd {
   }
   .hint {
     grid-area: hint;
+  }
+}
+
+/* Very short screens (phones held sideways): squeeze the sidebar so every button fits. */
+@media (max-height: 560px) and (orientation: landscape) {
+  .titlebar {
+    height: 1.3rem;
+  }
+  .game {
+    padding: 0.4rem;
+    gap: 0.5rem;
+  }
+  .board-wrap {
+    --board: min(
+      calc(100dvh - 1rem - 5px - 1.3rem - 0.8rem),
+      calc(100vw - 1rem - 6px - 0.8rem - 0.5rem - var(--side))
+    );
+  }
+  .side {
+    gap: 0.35rem;
+  }
+  .side > .cards {
+    max-height: 5.5rem;
+  }
+  .card,
+  .cards.many .card {
+    padding: 0.1rem 0.3rem;
+  }
+  .card.current .card-name {
+    font-size: var(--step-0);
+  }
+  .card .swatch {
+    width: 1.3rem;
+    height: 1.3rem;
+  }
+  .preview {
+    width: 3.2rem;
+    height: 3.2rem;
+  }
+  .minimap {
+    max-width: 3.6rem;
+  }
+  .controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+  .controls button {
+    min-height: 1.9rem;
+    padding: 0.15rem 0.2rem;
+    font-size: var(--step--1);
+  }
+  .status {
+    min-height: 0;
+    font-size: var(--step--1);
   }
 }
 

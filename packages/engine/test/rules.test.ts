@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHAPES, applyAction, biteLevel, classicConfig, createGame, legalPlacements, shapeCells } from '../src/index.js';
+import { SHAPES, applyAction, biteLevel, classicConfig, createGame, legalPlacements, modernConfig, shapeCells } from '../src/index.js';
 import type { ActionResult, GameState } from '../src/index.js';
 import { board, render } from './helpers.js';
 
@@ -28,8 +28,9 @@ describe('C1 setup', () => {
     expect(s.nextToothRound).toBeLessThanOrEqual(14);
   });
 
-  it('supports up to 16 players with distinct heads', () => {
-    const s = createGame(classicConfig(humans(16), { size: 40 }), 1);
+  it('classic rules cap at 4 players; modern allows 16', () => {
+    expect(() => createGame(classicConfig(humans(5)), 1)).toThrow(/up to 4/);
+    const s = createGame(modernConfig(humans(16), 50), 1);
     expect(new Set(s.players.map((p) => `${p.head.r},${p.head.c}`)).size).toBe(16);
   });
 });

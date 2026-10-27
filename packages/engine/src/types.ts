@@ -18,6 +18,8 @@ export interface PlayerConfig {
 }
 
 export interface GameConfig {
+  /** 'classic' = the 1994 rules (2–4 players); 'modern' = ring spawns, fair teeth, 2–16 players. */
+  rules: 'classic' | 'modern';
   /** Board is size × size. Classic: 20. */
   size: number;
   players: PlayerConfig[];

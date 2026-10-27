@@ -2,6 +2,23 @@ import type { GameConfig, PlayerConfig, Pos } from './types.js';
 
 export const CLASSIC_SIZE = 20;
 export const MAX_PLAYERS = 16;
+export const MAX_CLASSIC_PLAYERS = 4;
+export const MIN_SIZE = 10;
+export const MAX_SIZE = 128;
+
+export interface BoardSize {
+  id: 'classic' | 'large' | 'xl' | 'mega' | 'massive';
+  label: string;
+  size: number;
+}
+
+export const BOARD_SIZES: readonly BoardSize[] = [
+  { id: 'classic', label: 'Classic', size: 20 },
+  { id: 'large', label: 'Large', size: 35 },
+  { id: 'xl', label: 'XL', size: 50 },
+  { id: 'mega', label: 'Mega', size: 75 },
+  { id: 'massive', label: 'Massive', size: 100 },
+];
 
 /** Original Fungus 2.0 head positions on a 20×20 board (CODE 3 @ 0x01124). */
 const CLASSIC_HEADS: Record<number, Pos[]> = {
@@ -23,13 +40,22 @@ const CLASSIC_HEADS: Record<number, Pos[]> = {
   ],
 };
 
+/** Original constants. 80 cells = 80% of a fair share (20×20 / 4 players). */
+const CLASSIC_BITE_STEP = 80;
+const FAIR_SHARE_FRACTION = 0.8;
+
+/**
+ * Classic rules: the original 1994 game. Larger boards keep the original
+ * constants, start spots (scaled to the board) and corner teeth.
+ */
 export function classicConfig(players: PlayerConfig[], overrides: Partial<GameConfig> = {}): GameConfig {
   return {
+    rules: 'classic',
     size: CLASSIC_SIZE,
     players,
     startBites: 0,
     toothBites: 1,
-    biteStep: 80,
+    biteStep: CLASSIC_BITE_STEP,
     maxBiteLevel: 3,
     toothBase: 8,
     toothJitter: 6,
@@ -43,23 +69,151 @@ export function classicConfig(players: PlayerConfig[], overrides: Partial<GameCo
 }
 
 /**
- * Default head layout. 2–4 players use the original positions (scaled to the
- * board size). More players [ours] are spaced evenly on a ring at ~30% inset.
+ * Modern rules [ours]: 2–16 players spaced evenly on a circle, teeth placed so
+ * every player is the same distance from the same number of teeth, and bite
+ * levels scaled so "big" means the same share of the board at any size.
+ */
+export function modernConfig(players: PlayerConfig[], size: number, overrides: Partial<GameConfig> = {}): GameConfig {
+  const n = players.length;
+  return {
+    ...classicConfig(players),
+    rules: 'modern',
+    size,
+    heads: circleHeads(n, size),
+    teeth: circleTeeth(n, size),
+    biteStep: Math.max(10, Math.round((FAIR_SHARE_FRACTION * size * size) / n)),
+    stalemateTurns: n * 2,
+    ...overrides,
+  };
+}
+
+/** Spawn circle radius as a fraction of the board, leaving room to grow outward. */
+const RING = 0.36;
+/** Minimum distance (cells) between neighbouring spawns for a size to be offered. */
+const MIN_SPACING = 5;
+
+interface Layout {
+  heads: Pos[];
+  teeth: Pos[];
+}
+
+function ringAt(n: number, size: number, R: number, rot: number, offset: number): Pos[] {
+  const mid = (size - 1) / 2;
+  // First seat top-left, then clockwise — matches the classic seat order for 4.
+  const base = -Math.PI / 2 - Math.PI / n + rot;
+  return Array.from({ length: n }, (_, i) => {
+    const a = base + offset + (2 * Math.PI * i) / n;
+    return { r: Math.round(mid + R * Math.sin(a)), c: Math.round(mid + R * Math.cos(a)) };
+  });
+}
+
+function centreTeeth(size: number): Pos[] {
+  const lo = Math.floor((size - 1) / 2);
+  const hi = Math.ceil((size - 1) / 2);
+  const out: Pos[] = [];
+  for (const r of new Set([lo, hi])) for (const c of new Set([lo, hi])) out.push({ r, c });
+  return out;
+}
+
+const d = (a: Pos, b: Pos) => Math.hypot(a.r - b.r, a.c - b.c);
+
+/** Worst-case unfairness of a layout, in cells (0 = perfectly fair). */
+export function layoutUnfairness(heads: Pos[], teeth: Pos[], size: number): number {
+  const mid = (size - 1) / 2;
+  const radii = heads.map((h) => d(h, { r: mid, c: mid }));
+  let worst = Math.max(...radii) - Math.min(...radii);
+  // Neighbour spacing: nobody should be noticeably closer to a rival than others are.
+  if (heads.length > 2) {
+    const gaps = heads.map((h, i) => d(h, heads[(i + 1) % heads.length]!));
+    worst = Math.max(worst, Math.max(...gaps) - Math.min(...gaps));
+  }
+  const profile = (h: Pos) => teeth.map((t) => d(h, t)).sort((a, b) => a - b);
+  const profiles = heads.map(profile);
+  for (let i = 0; i < teeth.length; i++) {
+    const col = profiles.map((p) => p[i]!);
+    worst = Math.max(worst, Math.max(...col) - Math.min(...col));
+  }
+  return worst;
+}
+
+const layoutCache = new Map<string, Layout>();
+
+/**
+ * Snapping a regular polygon to a grid can't be perfectly symmetric for most n,
+ * so search small radius/rotation nudges and keep the fairest rounded layout.
+ */
+function fairLayout(n: number, size: number): Layout {
+  const key = `${n}x${size}`;
+  const hit = layoutCache.get(key);
+  if (hit) return hit;
+  const R0 = (size - 1) * RING;
+  let best: Layout | null = null;
+  let bestScore = Infinity;
+  for (let dr = -1.5; dr <= 1.5001; dr += 0.25) {
+    for (let k = -8; k <= 8; k++) {
+      const rot = (k / 8) * (Math.PI / n) * 0.25;
+      const heads = ringAt(n, size, R0 + dr, rot, 0);
+      if (new Set(heads.map((h) => `${h.r},${h.c}`)).size !== n) continue;
+      // Never trade spacing for symmetry: keep neighbours at least MIN_SPACING − ½ apart.
+      if (n > 2 && heads.some((h, i) => d(h, heads[(i + 1) % n]!) < MIN_SPACING - 0.5)) continue;
+      const teeth = dedupe([...ringAt(n, size, R0 + dr, rot, Math.PI / n), ...centreTeeth(size)]).filter(
+        (t) => !heads.some((h) => h.r === t.r && h.c === t.c),
+      );
+      // Prefer fairness, then staying close to the nominal circle and orientation.
+      const score = layoutUnfairness(heads, teeth, size) + Math.abs(dr) * 0.01 + Math.abs(k) * 0.005;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { heads, teeth };
+      }
+    }
+  }
+  layoutCache.set(key, best!);
+  return best!;
+}
+
+function dedupe(ps: Pos[]): Pos[] {
+  const seen = new Set<string>();
+  return ps.filter((p) => {
+    const k = `${p.r},${p.c}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** Regular polygon: 2 = opposite sides, 3 = triangle, 4 = square, 6 = hexagon… */
+export function circleHeads(n: number, size: number): Pos[] {
+  return fairLayout(n, size).heads.map((p) => ({ ...p }));
+}
+
+/**
+ * One tooth on the circle exactly between each pair of neighbours, plus the
+ * centre (one cell on odd boards, the middle 2×2 on even boards) — equally far
+ * from everyone.
+ */
+export function circleTeeth(n: number, size: number): Pos[] {
+  return fairLayout(n, size).teeth.map((p) => ({ ...p }));
+}
+
+/** Smallest offered board size that gives `n` modern players room to breathe. */
+export function minModernSize(n: number): number {
+  for (const b of BOARD_SIZES) {
+    const R = (b.size - 1) * RING;
+    const spacing = n === 2 ? 2 * R : 2 * R * Math.sin(Math.PI / n);
+    if (spacing >= MIN_SPACING) return b.size;
+  }
+  return BOARD_SIZES[BOARD_SIZES.length - 1]!.size;
+}
+
+/**
+ * Default head layout for classic rules: the original positions for 2–4
+ * players, scaled to the board size.
  */
 export function defaultHeads(n: number, size: number): Pos[] {
   const classic = CLASSIC_HEADS[n];
-  if (classic) {
-    const k = (size - 1) / (CLASSIC_SIZE - 1);
-    return classic.map((p) => ({ r: Math.round(p.r * k), c: Math.round(p.c * k) }));
-  }
-  const mid = (size - 1) / 2;
-  const radius = (size - 1) * 0.35;
-  const out: Pos[] = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 - Math.PI * 0.75;
-    out.push({ r: Math.round(mid + radius * Math.sin(a)), c: Math.round(mid + radius * Math.cos(a)) });
-  }
-  return out;
+  if (!classic) return circleHeads(n, size);
+  const k = (size - 1) / (CLASSIC_SIZE - 1);
+  return classic.map((p) => ({ r: Math.round(p.r * k), c: Math.round(p.c * k) }));
 }
 
 export function defaultTeeth(size: number): Pos[] {
@@ -75,7 +229,8 @@ export function defaultTeeth(size: number): Pos[] {
 export function validateConfig(cfg: GameConfig): string | null {
   const n = cfg.players.length;
   if (n < 2 || n > MAX_PLAYERS) return `need 2–${MAX_PLAYERS} players, got ${n}`;
-  if (!Number.isInteger(cfg.size) || cfg.size < 10 || cfg.size > 64) return `board size must be 10–64`;
+  if (cfg.rules === 'classic' && n > MAX_CLASSIC_PLAYERS) return `classic rules allow up to ${MAX_CLASSIC_PLAYERS} players`;
+  if (!Number.isInteger(cfg.size) || cfg.size < MIN_SIZE || cfg.size > MAX_SIZE) return `board size must be ${MIN_SIZE}–${MAX_SIZE}`;
   const heads = cfg.heads ?? defaultHeads(n, cfg.size);
   if (heads.length !== n) return 'heads must match player count';
   const seen = new Set<number>();

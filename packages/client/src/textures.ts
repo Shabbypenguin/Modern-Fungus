@@ -154,7 +154,7 @@ export function drawFace(
   g.save();
   g.fillStyle = style.face;
   g.strokeStyle = '#000';
-  g.lineWidth = Math.max(1, size / 14);
+  g.lineWidth = Math.max(1, Math.min(size / 14, 3 + size / 40));
   g.beginPath();
   g.arc(cx, cy, r, 0, Math.PI * 2);
   g.fill();
