@@ -50,6 +50,13 @@ export const PLAYER_STYLES: PlayerStyle[] = COLORS.map(([name, base, accent, edg
 /** Size of one pattern tile in CSS pixels before scaling. */
 export const TILE = 48;
 
+/**
+ * How many board cells one pattern tile spans. Every pattern repeats 4 times
+ * across a tile (triangles, stripes, squiggle rows), so a 4-cell span puts one
+ * repeat in each cell and the pattern lines up with the grid.
+ */
+export const TILE_CELLS = 4;
+
 /** Same hue at zero alpha, so gradients fade without a dark halo. */
 function transparent(hex: string): string {
   const n = parseInt(hex.slice(1), 16);

@@ -1,5 +1,5 @@
 import type { GameState, Pos } from '@fungus/engine';
-import { PLAYER_STYLES, TILE, drawFace, drawTooth, makeTile } from './textures';
+import { PLAYER_STYLES, TILE, TILE_CELLS, drawFace, drawTooth, makeTile } from './textures';
 
 export interface Overlay {
   /** Piece preview under the cursor. */
@@ -200,7 +200,7 @@ export class BoardRenderer {
 
   /** Board-anchored pattern for a player, from a tile cached at a resolution near the current zoom. */
   private pattern(i: number): CanvasPattern {
-    const want = this.CS * 3; // one tile spans three cells so it reads as one organism
+    const want = this.CS * TILE_CELLS; // anchored to the board so every repeat lands on a cell
     const px = Math.min(1024, Math.max(32, 2 ** Math.ceil(Math.log2(want))));
     const key = `${i}:${px}`;
     let p = this.tiles.get(key);

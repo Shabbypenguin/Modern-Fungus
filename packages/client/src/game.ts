@@ -17,7 +17,7 @@ import { BoardRenderer } from './render';
 import type { Overlay } from './render';
 import { sfx } from './sound';
 import { recordResult } from './storage';
-import { PLAYER_STYLES, drawFace, makeTile, TILE } from './textures';
+import { PLAYER_STYLES, TILE, TILE_CELLS, drawFace, makeTile } from './textures';
 
 const CPU_THINK_MS = 450;
 const CPU_STEP_MS = 280;
@@ -298,7 +298,9 @@ export class GameScreen {
     const cs = Math.floor(W / 4.5);
     const ox = (W - maxC * cs) / 2;
     const oy = (W - maxR * cs) / 2;
-    g.fillStyle = g.createPattern(makeTile(PLAYER_STYLES[this.me]!, this.me, (cs * 3) / TILE), 'repeat')!;
+    const pat = g.createPattern(makeTile(PLAYER_STYLES[this.me]!, this.me, (cs * TILE_CELLS) / TILE), 'repeat')!;
+    pat.setTransform(new DOMMatrix([1, 0, 0, 1, ox, oy])); // line the pattern up with the piece's cells
+    g.fillStyle = pat;
     g.strokeStyle = PLAYER_STYLES[this.me]!.edge;
     g.lineWidth = 2;
     for (const o of offs) {
