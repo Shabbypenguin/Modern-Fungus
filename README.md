@@ -3,7 +3,7 @@
 A faithful, cross-platform remake of **Fungus 2.0** (©1992, 1994 Ryan Koopmans), a classic Mac OS game.
 It's a browser PWA with CPU players and online play.
 
-**Play:** https://fungus.shabbygames.club · **Guide:** the [wiki](https://github.com/shabbypenguin/fungus/wiki) covers how to play, controls, rules, Modern mode, settings, online play and development.
+**Play:** https://fungus.shabbygames.club · **Guide:** the [wiki](https://github.com/Shabbypenguin/Modern-Fungus/wiki) covers how to play, controls, rules, Modern mode, settings, online play and development.
 
 - `docs/RULES.md` holds the classic rules, reverse-engineered from the original 68K code, plus Modern mode and board sizes.
 - **Classic** is the 1994 game, for up to 4 players. **Modern** seats up to 16 in a fair ring, on boards from 20×20 to 100×100.

@@ -3,8 +3,8 @@
 ## Quick start
 Needs Node 22+ and npm 10+.
 ```
-git clone https://github.com/shabbypenguin/fungus.git
-cd fungus
+git clone https://github.com/Shabbypenguin/Modern-Fungus.git
+cd Modern-Fungus
 npm install
 npm run dev
 ```
