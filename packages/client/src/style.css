@@ -50,6 +50,8 @@ body {
 #app {
   min-height: 100dvh;
   display: grid;
+  /* minmax(0, …) so a window can never grow wider than the screen. */
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 0.75rem;
 }
@@ -413,10 +415,15 @@ input[type='checkbox'] {
 }
 
 .board-wrap {
-  height: 100%;
-  aspect-ratio: 1;
-  max-width: calc(100vw - var(--side) - 3.5rem);
-  min-width: 0;
+  /* Explicit square size: the largest that fits both the height and the width left
+     beside the sidebar. (No aspect-ratio tricks — those size grid tracks differently
+     across browsers.) Chrome: app padding, window border+shadow, title bar, game padding, gap. */
+  --board: min(
+    calc(100dvh - 1rem - 5px - 1.6rem - 1.8rem),
+    calc(100vw - 1rem - 6px - 1.8rem - 0.9rem - var(--side))
+  );
+  width: var(--board);
+  height: var(--board);
   display: grid;
   place-items: center;
 }
@@ -635,9 +642,9 @@ kbd {
     gap: 0.6rem;
   }
   .board-wrap {
-    height: auto;
     width: 100%;
-    max-width: none;
+    height: auto;
+    aspect-ratio: 1;
   }
   .side {
     display: grid;
