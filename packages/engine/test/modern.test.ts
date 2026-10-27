@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  biteRollRange,
+  modernBiteRange,
   BOARD_SIZES,
   applyAction,
   biteStarts,
@@ -64,9 +66,30 @@ describe('modern layout', () => {
     expect(h[3]!.r > 10 && h[3]!.c < 10).toBe(true);
   });
 
-  it('bite step keeps the original ratio: 80 at 20×20 with 4 players', () => {
-    expect(modernConfig(players(4), 20).biteStep).toBe(80);
-    expect(modernConfig(players(16), 100).biteStep).toBe(500);
+  it('bite levels come from body mass (base + shared roll), not board area', () => {
+    expect(modernConfig(players(4), 20).biteStep).toBe(55);
+    expect(modernConfig(players(16), 100).biteStep).toBe(55);
+    expect(modernConfig(players(4), 20).biteRoll).toEqual({ min: 2, max: 11 });
+    expect(modernConfig(players(16), 100).biteRoll).toEqual({ min: 10, max: 31 });
+    expect(biteRollRange(35)).toEqual({ min: 4, max: 16 });
+    expect(biteRollRange(64)).toEqual({ min: 6, max: 21 }); // between brackets: the one it reaches
+    expect(modernBiteRange(50, 'fast')).toEqual({ min: 46, max: 61 });
+  });
+
+  it('the roll is rolled once, shared by everyone, within range, and repeatable from the seed', () => {
+    const seen = new Set<number>();
+    for (let seed = 0; seed < 300; seed++) {
+      const s = createGame(modernConfig(players(8), 50), seed);
+      expect(s.config.biteStep).toBeGreaterThanOrEqual(55 + 6);
+      expect(s.config.biteStep).toBeLessThanOrEqual(55 + 21);
+      expect(s.config.biteRoll).toBeUndefined(); // final value only, can't be rolled again
+      seen.add(s.config.biteStep);
+    }
+    expect(seen.size).toBe(16); // every value in 6–21 turns up
+    const a = createGame(modernConfig(players(4), 35), 42);
+    const b = createGame(modernConfig(players(4), 35), 42);
+    expect(a.config.biteStep).toBe(b.config.biteStep);
+    expect(createGame(a.config, 1).config.biteStep).toBe(a.config.biteStep);
   });
 
   it('classic rules on a big board keep the original constants and corner teeth', () => {
@@ -137,11 +160,11 @@ describe('modern options', () => {
     expect([normal.toothBase, normal.toothJitter]).toEqual([8, 6]);
   });
 
-  it('Bite growth speeds are ordered and Normal matches 1994', () => {
+  it('Bite growth speeds are ordered', () => {
     const order = ['veryslow', 'slow', 'normal', 'fast', 'veryfast'] as const;
     const steps = order.map((sp) => modernConfig(players(4), 20, {}, { biteGrowth: sp }).biteStep);
     for (let i = 1; i < steps.length; i++) expect(steps[i]!).toBeLessThan(steps[i - 1]!);
-    expect(steps[2]).toBe(80);
+    expect(steps).toEqual([90, 70, 55, 40, 28]);
   });
 
   it('fast new teeth actually arrive faster in play', () => {

@@ -86,11 +86,23 @@ export async function startServer(opts: ServerOptions = {}): Promise<Running> {
       socket.destroy();
       return;
     }
+    // Reserve the slot now, so simultaneous upgrades can't slip past the cap.
+    perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+    let attached = false;
+    socket.once('close', () => {
+      if (!attached) release(ip);
+    });
     wss.handleUpgrade(req, socket, head, (ws) => {
-      perIp.set(ip, (perIp.get(ip) ?? 0) + 1);
+      attached = true;
       attach(ws, ip);
     });
   });
+
+  function release(ip: string): void {
+    const n = (perIp.get(ip) ?? 1) - 1;
+    if (n > 0) perIp.set(ip, n);
+    else perIp.delete(ip);
+  }
 
   function attach(ws: WebSocket, ip: string): void {
     let alive = true;
@@ -120,8 +132,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<Running> {
     });
     ws.on('close', () => {
       clearInterval(beat);
-      perIp.set(ip, Math.max(0, (perIp.get(ip) ?? 1) - 1));
-      if (perIp.get(ip) === 0) perIp.delete(ip);
+      release(ip);
       handle.close();
     });
     ws.on('error', () => ws.terminate());

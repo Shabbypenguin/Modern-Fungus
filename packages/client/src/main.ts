@@ -9,7 +9,7 @@ import {
   gameSpeedSettings,
   matchGameSpeed,
   minModernSize,
-  modernBiteStep,
+  modernBiteRange,
   modernConfig,
 } from '@fungus/engine';
 import type { GameConfig, GameSpeed, PlayerConfig, Speed } from '@fungus/engine';
@@ -191,7 +191,7 @@ function showSetup(): void {
   let custom: HTMLElement | null = null;
   if (modern) {
     const t = TOOTH_RATES[st.newTeeth];
-    const step = modernBiteStep(st.boardSize, nModern, st.biteGrowth);
+    const range = modernBiteRange(st.boardSize, st.biteGrowth);
     const label = (sp: Speed) => SPEEDS.find((x) => x.id === sp)!.label;
     const picker = (name: string, title: string, value: Speed, set: (v: Speed) => void) =>
       segmented<Speed>(name, title, SPEEDS.map((sp) => ({ value: sp.id, text: sp.label })), value, (v) => {
@@ -227,7 +227,12 @@ function showSetup(): void {
           { class: 'field' },
           h('h3', {}, 'Bite growth'),
           picker('biteGrowth', 'How soon bites get bigger', st.biteGrowth, (v) => (st.biteGrowth = v)),
-          h('p', { class: 'muted note' }, `Big bites (2 long) at ${step} cells, monster bites (3 long) at ${step * 2}.`),
+          h(
+            'p',
+            { class: 'muted note' },
+            `Big bites (2 long) at ${range.min}–${range.max} cells, monster bites (3 long) at double. ` +
+              'The exact number is rolled each game and is the same for everyone.',
+          ),
         ),
       ),
     );

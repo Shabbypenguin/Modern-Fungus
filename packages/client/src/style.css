@@ -987,7 +987,10 @@ kbd {
     display: grid;
     overflow: visible;
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'cards view' 'controls controls' 'emotes emotes' 'status status';
+    grid-template-areas: 'cards view' 'controls controls' 'info info' 'emotes emotes' 'status status';
+  }
+  .side .bite-info {
+    grid-area: info;
   }
   .side .emotes {
     grid-area: emotes;
@@ -1432,4 +1435,9 @@ table.rooms button {
     max-height: none;
     overflow: visible;
   }
+}
+
+.bite-info {
+  margin: 0;
+  font-size: var(--step--1);
 }

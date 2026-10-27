@@ -40,9 +40,16 @@ export function createGame(config: GameConfig, seed: number): GameState {
   }
   const rng = new Rng(seed);
   const round = 1;
+  const cfg = structuredClone(config);
+  // One shared roll for everyone, fixed for the whole game (and replayed identically from the seed).
+  // The rolled value replaces the range, so the state's config is final and can't be rolled twice.
+  if (cfg.biteRoll) {
+    cfg.biteStep += cfg.biteRoll.min + rng.int(cfg.biteRoll.max - cfg.biteRoll.min + 1);
+    delete cfg.biteRoll;
+  }
   const state: GameState = {
     version: 1,
-    config: structuredClone(config),
+    config: cfg,
     size,
     cells,
     teeth,

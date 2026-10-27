@@ -33,6 +33,11 @@ export interface GameConfig {
   toothBites: number;
   /** Cells per bite-level step: level = 1 + floor(cells / biteStep). Classic: 80. */
   biteStep: number;
+  /**
+   * Modern: a random number of cells in [min, max], rolled once per game from the seed
+   * and shared by every player, added to biteStep when the game is created.
+   */
+  biteRoll?: { min: number; max: number };
   /** Max bite level (1 = Bites, 2 = Big, 3 = Monster). Classic: 3. */
   maxBiteLevel: number;
   /** Free tooth for everyone every toothBase + [0, toothJitter) rounds. Classic: 8, 6. */

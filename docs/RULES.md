@@ -92,20 +92,26 @@ Classic 20, Large 35, XL 50, Mega 75, Massive 100. **[ours]**
 - **Minimum board:** a size is offered only if neighbouring spawns are at least 5 cells apart. Up to 8 players fit Classic 20, up to 15 fit Large 35, and 16 need XL 50.
 - **Fair teeth:** one tooth exactly halfway between each pair of neighbours, out past the spawn ring toward the edge (45% of the board width from the centre, versus 36% for spawns), plus the centre. The centre is one cell on odd boards and the middle 2×2 on even boards. Every player is the same distance from the same set of teeth.
 - **Grid fairness:** snapping a regular polygon to a grid can't be perfect for most player counts. The layout searches small radius and rotation nudges and keeps the fairest one. Across every offered player count and board size, no player's distances to rivals or teeth differ from anyone else's by more than 1.3 cells, and 2, 4 and 8 players are often exact.
-- **Bite levels scale with the board:** `biteStep = 0.8 × cells ÷ players`, which is "80% of a fair share of the board". That reproduces the original's 80 at 20×20 with 4 players, and gives 500 at 100×100 with 16.
+- **Bite levels come from body mass, not board area.** A fungus grows about 4–5 cells a round on any board, so a threshold tied to board area made big bites unreachable on big boards (for example, 2000 cells at 100×100 with 4 players). Instead:
+  - cells per bite level = **base** (from Bite growth) + **one shared roll**, made once per game from the seed. Every player gets the same number, and it's shown in the game.
+  - Big bites at that many cells, monster bites at double.
+  - The roll range widens on bigger boards: Classic 20 → 2–11, Large 35 → 4–16, XL 50 → 6–21, Mega 75 → 8–26, Massive 100 → 10–31.
+  - With Normal growth (base 55), big bites arrive around rounds 8–16 on every board size in CPU simulations, and monster bites around rounds 10–30.
 - **Everything else** (pieces, capture, bites, the free tooth every 8–13 rounds) is the classic rule set.
 
 ## Modern options **[ours]**
 
 These two are independent, so more teeth never force bigger bites:
 
-| Step | New teeth (everyone +1 bite every…) | Bite growth (big bites at … of a fair share) |
+| Step | New teeth (everyone +1 bite every…) | Bite growth (base cells per bite level) |
 |---|---|---|
-| Very slow | 16–21 rounds | 140% |
-| Slow | 12–17 rounds | 110% |
-| Normal (1994) | 8–13 rounds | 80% |
-| Fast | 5–8 rounds | 55% |
-| Very fast | 3–5 rounds | 35% |
+| Very slow | 16–21 rounds | 90 |
+| Slow | 12–17 rounds | 70 |
+| Normal | 8–13 rounds (1994) | 55 |
+| Fast | 5–8 rounds | 40 |
+| Very fast | 3–5 rounds | 28 |
+
+The shared roll is added to the base, so Normal on Classic 20 gives 57–66 cells.
 
 **Game speed presets** set New teeth and Bite growth together. They never change the board, which is always the player's choice:
 

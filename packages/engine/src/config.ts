@@ -42,7 +42,6 @@ const CLASSIC_HEADS: Record<number, Pos[]> = {
 
 /** Original constants. 80 cells = 80% of a fair share (20×20 / 4 players). */
 const CLASSIC_BITE_STEP = 80;
-const FAIR_SHARE_FRACTION = 0.8;
 
 /**
  * Classic rules: the original 1994 game. Larger boards keep the original
@@ -87,14 +86,33 @@ export const TOOTH_RATES: Record<Speed, { base: number; jitter: number }> = {
   veryfast: { base: 3, jitter: 3 },
 };
 
-/** Bite growth: big bites arrive at this fraction of a fair share of the board. Normal = 1994. */
-export const BITE_GROWTH: Record<Speed, number> = {
-  veryslow: 1.4,
-  slow: 1.1,
-  normal: FAIR_SHARE_FRACTION,
-  fast: 0.55,
-  veryfast: 0.35,
+/**
+ * Bite growth: cells of body mass per bite level, before the shared roll.
+ * A fungus grows ~4–5 cells a round on any board, so these don't depend on board size.
+ */
+export const BITE_BASE: Record<Speed, number> = {
+  veryslow: 90,
+  slow: 70,
+  normal: 55,
+  fast: 40,
+  veryfast: 28,
 };
+
+/** The shared per-game roll added to the base; wider on bigger boards. */
+const BITE_ROLLS: readonly { size: number; min: number; max: number }[] = [
+  { size: 20, min: 2, max: 11 },
+  { size: 35, min: 4, max: 16 },
+  { size: 50, min: 6, max: 21 },
+  { size: 75, min: 8, max: 26 },
+  { size: 100, min: 10, max: 31 },
+];
+
+/** Roll range for a board: the largest bracket the board reaches. */
+export function biteRollRange(size: number): { min: number; max: number } {
+  let pick = BITE_ROLLS[0]!;
+  for (const b of BITE_ROLLS) if (size >= b.size) pick = b;
+  return { min: pick.min, max: pick.max };
+}
 
 export interface ModernOptions {
   /** How often everyone grows a new tooth. */
@@ -132,15 +150,16 @@ export function matchGameSpeed(settings: SpeedSettings): GameSpeed | null {
   return GAME_SPEEDS.find((g) => g.newTeeth === settings.newTeeth && g.biteGrowth === settings.biteGrowth)?.id ?? null;
 }
 
-/** Cells per bite-level step for a modern board. */
-export function modernBiteStep(size: number, players: number, growth: Speed = 'normal'): number {
-  return Math.max(10, Math.round((BITE_GROWTH[growth] * size * size) / players));
+/** Possible cells per bite level on a modern board: base + the roll's range. */
+export function modernBiteRange(size: number, growth: Speed = 'normal'): { min: number; max: number } {
+  const r = biteRollRange(size);
+  return { min: BITE_BASE[growth] + r.min, max: BITE_BASE[growth] + r.max };
 }
 
 /**
  * Modern rules [ours]: 2–16 players spaced evenly on a circle, teeth placed so
  * every player is the same distance from the same number of teeth, and bite
- * levels scaled so "big" means the same share of the board at any size.
+ * levels set by body mass (base + a roll shared by everyone), not board area.
  */
 export function modernConfig(
   players: PlayerConfig[],
@@ -156,7 +175,8 @@ export function modernConfig(
     size,
     heads: circleHeads(n, size),
     teeth: circleTeeth(n, size),
-    biteStep: modernBiteStep(size, n, options.biteGrowth),
+    biteStep: BITE_BASE[options.biteGrowth ?? 'normal'],
+    biteRoll: biteRollRange(size),
     toothBase: teeth.base,
     toothJitter: teeth.jitter,
     stalemateTurns: n * 2,
@@ -321,6 +341,8 @@ export function validateConfig(cfg: GameConfig): string | null {
     seen.add(k);
   }
   if (cfg.biteStep < 0 || cfg.maxBiteLevel < 1) return 'bad bite settings';
+  if (cfg.biteRoll && !(Number.isInteger(cfg.biteRoll.min) && cfg.biteRoll.min >= 0 && cfg.biteRoll.max >= cfg.biteRoll.min))
+    return 'bad bite roll';
   if (cfg.classicCpuGrowMin < 1 || cfg.classicCpuGrowMax < cfg.classicCpuGrowMin) return 'bad classic CPU grow range';
   return null;
 }

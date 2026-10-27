@@ -1,4 +1,4 @@
-import { BOARD_SIZES, SPEEDS } from '@fungus/engine';
+import { BOARD_SIZES, SPEEDS, modernBiteRange } from '@fungus/engine';
 import type { RoomView, SeatSpec, SeatView } from '@fungus/protocol';
 import { h, titlebar } from './dom';
 import type { NetClient } from './net';
@@ -115,7 +115,10 @@ export class LobbyScreen {
     const summary =
       `${s.rules === 'classic' ? 'Classic' : 'Modern'} rules on the ${board?.label ?? s.boardSize} ${s.boardSize}×${s.boardSize} board, ` +
       `${s.turnTimeLimit}-second turns` +
-      (s.rules === 'modern' ? `, new teeth ${speedLabel(s.newTeeth)}, bite growth ${speedLabel(s.biteGrowth)}.` : '.');
+      (s.rules === 'modern'
+        ? `, new teeth ${speedLabel(s.newTeeth)}, bite growth ${speedLabel(s.biteGrowth)} ` +
+          `(big bites at ${modernBiteRange(s.boardSize, s.biteGrowth).min}–${modernBiteRange(s.boardSize, s.biteGrowth).max} cells, rolled at the start).`
+        : '.');
 
     const copy = h('button', { type: 'button', class: 'copy' }, 'Copy invite link');
     copy.addEventListener('click', async () => {

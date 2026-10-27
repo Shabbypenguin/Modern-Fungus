@@ -353,12 +353,16 @@ describe('http', () => {
 
   it('caps sockets per address', async () => {
     await boot({ maxPerIp: 2 });
-    const a = new Client(srv.url);
-    const b = new Client(srv.url);
-    const c = new Client(srv.url);
-    clients.push(a, b, c);
-    await a.open();
-    await b.open();
-    await expect(c.open()).rejects.toBeTruthy();
+    // Opened at the same moment: exactly two get in, whichever they are.
+    const all = [new Client(srv.url), new Client(srv.url), new Client(srv.url)];
+    clients.push(...all);
+    const results = await Promise.allSettled(all.map((c) => c.open()));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    // A slot frees up when someone leaves.
+    all[results.findIndex((r) => r.status === 'fulfilled')]!.close();
+    await new Promise((r) => setTimeout(r, 100));
+    const d = new Client(srv.url);
+    clients.push(d);
+    await d.open();
   });
 });

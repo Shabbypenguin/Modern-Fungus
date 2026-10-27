@@ -95,6 +95,7 @@ export class GameScreen {
   private miniBox: HTMLElement;
   private status: HTMLElement;
   private timerBar: HTMLElement;
+  private biteInfo: HTMLElement;
   private btn: Record<string, HTMLButtonElement> = {};
   private dialog: HTMLElement;
   private resizeObs: ResizeObserver;
@@ -152,6 +153,7 @@ export class GameScreen {
     this.miniBox = h('div', { class: 'mini-box', hidden: true }, this.minimap);
     this.status = h('p', { class: 'status', role: 'status', 'aria-live': 'polite' });
     this.timerBar = h('div', { class: 'timer-fill' });
+    this.biteInfo = h('p', { class: 'bite-info muted' });
 
     const mk = (key: string, label: string, title: string, fn: () => void) =>
       (this.btn[key] = h('button', { type: 'button', title, class: `${key}-btn`, onclick: fn }, label));
@@ -203,6 +205,7 @@ export class GameScreen {
             mk('help', 'Controls', 'Show controls (?)', () => this.showControls()),
             mk('exit', on ? 'Leave' : 'Exit', 'Leave this game', () => this.confirmExit()),
           ),
+          this.biteInfo,
           this.emoteRow,
           this.status,
         ),
@@ -368,6 +371,11 @@ export class GameScreen {
   private lastCurrent = -1;
 
   private updatePanel(): void {
+    const step = this.s.config.biteStep;
+    const max = this.s.config.maxBiteLevel;
+    const info =
+      step > 0 && max > 1 ? `Big bites at ${step} cells${max > 2 ? `, monster bites at ${step * 2}` : ''}.` : '';
+    if (this.biteInfo.textContent !== info) this.biteInfo.textContent = info;
     if (this.lastCurrent !== this.me) {
       this.lastCurrent = this.me;
       // In a long (scrolling) player list, keep whoever's turn it is in view.
